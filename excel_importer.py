@@ -74,22 +74,31 @@ class ExcelImporter:
         """
         规范化列名
         
-        去除空格、特殊字符等
+        去除空格、特殊字符、中间空格等
         """
         if not name:
             return ""
         
-        # 去除空格和换行符
-        name = str(name).strip().replace('\n', '').replace('\r', '')
+        # 转换为字符串
+        name = str(name)
+        
+        # 去除换行符和回车符
+        name = name.replace('\n', '').replace('\r', '')
         
         # 去除括号中的内容，如"缴费基数（元）" -> "缴费基数"
         name = re.sub(r'[（(].*?[)）]', '', name)
+        
+        # 去除所有空格（包括中间的空格，如"姓 名" -> "姓名"）
+        name = name.replace(' ', '')
+        
+        # 去除首尾空白
+        name = name.strip()
         
         return name
     
     def _detect_header_row(self, sheet: Worksheet) -> Tuple[int, Dict[str, int]]:
         """
-        检测表头行和列映射
+        检测表头行和列映射（支持多级表头）
         
         Args:
             sheet: 工作表对象
@@ -97,11 +106,30 @@ class ExcelImporter:
         Returns:
             (表头行号, {字段名: 列号})
         """
-        # 尝试前5行作为可能的表头
+        # 尝试前10行，检查哪一行包含最多的已知列名
         max_header_row = min(10, sheet.max_row)
         
+        best_row = 1
+        best_columns = {}
+        best_score = 0
+        
+        # 关键字段权重
+        field_weights = {
+            'name': 10,           # 姓名 - 最重要
+            'sequence': 5,         # 序号
+            'branch_name': 8,      # 所属党支部
+            'branch_sequence': 5,  # 支部序号
+            'position_salary': 3,  # 岗位工资
+            'rank_salary': 3,      # 薪级工资
+            'housing_fund': 3,     # 住房公积金
+            'payment_base': 4,     # 缴费基数
+            'monthly_fee': 4,      # 每月应缴党费
+        }
+        
+        # 检查每一行
         for row in range(1, max_header_row + 1):
             columns_found = {}
+            row_score = 0
             
             for col in range(1, sheet.max_column + 1):
                 cell_value = sheet.cell(row=row, column=col).value
@@ -114,16 +142,93 @@ class ExcelImporter:
                 if normalized_name in self.reverse_mapping:
                     field_name = self.reverse_mapping[normalized_name]
                     columns_found[field_name] = col
+                    row_score += field_weights.get(field_name, 1)
             
-            # 如果找到至少2个关键字段（如姓名、序号等），则认为找到了表头
-            essential_fields = ['name', 'sequence', 'branch_name']
-            found_essential = sum(1 for f in essential_fields if f in columns_found)
-            
-            if found_essential >= 1 or (len(columns_found) >= 3):
-                return row, columns_found
+            # 检查是否有更好的结果
+            if row_score > best_score:
+                best_score = row_score
+                best_row = row
+                best_columns = columns_found
         
-        # 如果没有找到明确的表头，返回第一行
-        return 1, {}
+        # 如果找到的列不够，尝试使用"备用检测方法"
+        # 检查是否有"姓名"或"序号"在后面的行
+        if best_score < 5:
+            # 尝试从第2行开始，逐行检查是否有连续的"序号"、"姓名"等
+            for row in range(2, min(max_header_row + 1, sheet.max_row)):
+                columns_found = {}
+                row_score = 0
+                
+                for col in range(1, sheet.max_column + 1):
+                    cell_value = sheet.cell(row=row, column=col).value
+                    if cell_value is None:
+                        continue
+                    
+                    normalized_name = self._normalize_column_name(cell_value)
+                    
+                    # 更宽松的匹配
+                    # 检查是否包含关键字
+                    if '姓名' in normalized_name:
+                        columns_found['name'] = col
+                        row_score += 10
+                    elif '序号' in normalized_name and '支部' not in normalized_name:
+                        columns_found['sequence'] = col
+                        row_score += 5
+                    elif '支部序号' in normalized_name:
+                        columns_found['branch_sequence'] = col
+                        row_score += 5
+                    elif '党支部' in normalized_name or '所属支部' in normalized_name:
+                        columns_found['branch_name'] = col
+                        row_score += 8
+                    elif '岗位工资' in normalized_name:
+                        columns_found['position_salary'] = col
+                        row_score += 3
+                    elif '薪级工资' in normalized_name:
+                        columns_found['rank_salary'] = col
+                        row_score += 3
+                    elif '高定工资' in normalized_name:
+                        columns_found['fixed_salary'] = col
+                        row_score += 3
+                    elif '基础性绩效' in normalized_name:
+                        columns_found['basic_performance'] = col
+                        row_score += 3
+                    elif '住房公积金' in normalized_name:
+                        columns_found['housing_fund'] = col
+                        row_score += 3
+                    elif '医疗保险' in normalized_name:
+                        columns_found['medical_insurance'] = col
+                        row_score += 3
+                    elif '养老保险' in normalized_name:
+                        columns_found['pension_insurance'] = col
+                        row_score += 3
+                    elif '职业年金' in normalized_name:
+                        columns_found['occupational_annuity'] = col
+                        row_score += 3
+                    elif '大额医疗' in normalized_name:
+                        columns_found['large_medical'] = col
+                        row_score += 3
+                    elif '失业保险' in normalized_name:
+                        columns_found['unemployment_insurance'] = col
+                        row_score += 3
+                    elif '个人所得税' in normalized_name:
+                        columns_found['personal_income_tax'] = col
+                        row_score += 3
+                    elif '缴费基数' in normalized_name:
+                        columns_found['payment_base'] = col
+                        row_score += 4
+                    elif '每月应缴党费' in normalized_name or '月党费' in normalized_name:
+                        columns_found['monthly_fee'] = col
+                        row_score += 4
+                
+                if row_score > best_score:
+                    best_score = row_score
+                    best_row = row
+                    best_columns = columns_found
+        
+        print(f"  检测到表头行: 第{best_row}行")
+        print(f"  检测到的列映射: {best_columns}")
+        print(f"  匹配分数: {best_score}")
+        
+        return best_row, best_columns
     
     def _get_merged_cell_value(self, sheet: Worksheet, row: int, col: int) -> Any:
         """
@@ -146,11 +251,51 @@ class ExcelImporter:
         
         return sheet.cell(row=row, column=col).value
     
+    def _extract_branch_name_from_title(self, sheet: Worksheet) -> Optional[str]:
+        """
+        从表格标题中提取支部名称
+        
+        Args:
+            sheet: 工作表对象
+            
+        Returns:
+            支部名称，如果没有找到返回None
+        """
+        # 检查前10行的标题
+        for row in range(1, min(11, sheet.max_row + 1)):
+            for col in range(1, min(20, sheet.max_column + 1)):
+                cell_value = sheet.cell(row=row, column=col).value
+                if cell_value:
+                    text = str(cell_value)
+                    # 查找包含"支部"的文本
+                    if '支部' in text:
+                        # 清理文本
+                        text = text.replace('\n', ' ').replace('\r', ' ').strip()
+                        # 尝试提取支部名称
+                        patterns = [
+                            r'([^\s]+?支部)',  # 匹配"XX支部"
+                            r'支部[：:]([^\s，。]+)',  # 匹配"支部：XX"
+                            r'党支部[：:]([^\s，。]+)',  # 匹配"党支部：XX"
+                        ]
+                        for pattern in patterns:
+                            match = re.search(pattern, text)
+                            if match:
+                                result = match.group(1).strip()
+                                # 排除"党支部"、"各支部"等通用词
+                                if result not in ['党支部', '各支部', '支部', '支部名称', '所属支部']:
+                                    return result
+                        # 如果没有匹配到特定格式，直接使用包含"支部"的文本
+                        # 但要排除只是列名的情况
+                        if '明细表' in text or '汇总表' in text or '收缴' in text:
+                            # 如果是标题，尝试提取
+                            for part in text.split():
+                                if '支部' in part and part not in ['党支部', '各支部', '支部']:
+                                    return part
+        return None
+    
     def _parse_fee_detail_sheet(self, sheet: Worksheet) -> List[PartyBranch]:
         """
-        解析党费收缴明细表（总表）
-        
-        这种表格包含所有支部的所有党员信息，支部信息可能是合并单元格
+        解析党费收缴明细表（支持总表和子表两种格式）
         
         Args:
             sheet: 工作表对象
@@ -164,54 +309,103 @@ class ExcelImporter:
         # 检测表头行
         header_row, column_mapping = self._detect_header_row(sheet)
         
-        print(f"  检测到表头行: 第{header_row}行")
-        print(f"  检测到的列映射: {column_mapping}")
-        
-        # 如果没有找到足够的列，尝试使用默认映射
-        if not column_mapping:
-            # 尝试使用常见的列位置
-            print("  警告: 未检测到明确的列映射，尝试使用默认位置...")
+        # 如果没有找到姓名列，返回空
+        if 'name' not in column_mapping and 'sequence' not in column_mapping:
+            print("  警告: 未检测到姓名或序号列，无法解析数据")
             return []
+        
+        # 检查表格类型
+        # 如果有 branch_name 或 branch_sequence 列，说明是总表格式
+        # 否则，可能是子表格式（整个表格属于同一个支部）
+        has_branch_info = ('branch_name' in column_mapping) or ('branch_sequence' in column_mapping)
+        
+        print(f"  表格类型: {'总表格式（多支部）' if has_branch_info else '子表格式（单支部）'}")
+        
+        # 如果是子表格式，尝试从标题中提取支部名称
+        default_branch_name = None
+        if not has_branch_info:
+            default_branch_name = self._extract_branch_name_from_title(sheet)
+            if not default_branch_name:
+                # 使用工作表名称
+                default_branch_name = sheet.title
+                # 清理工作表名称
+                default_branch_name = re.sub(r'党费收缴明细', '', default_branch_name)
+                default_branch_name = re.sub(r'党费收缴', '', default_branch_name)
+                default_branch_name = default_branch_name.strip()
+                if not default_branch_name:
+                    default_branch_name = "导入数据"
+            print(f"  检测到的支部名称: {default_branch_name}")
+            
+            # 创建默认支部
+            default_branch = PartyBranch(name=default_branch_name, sequence=1)
+            branches_dict[default_branch_name] = default_branch
+            branches_list.append(default_branch)
         
         # 遍历数据行
         current_branch_sequence = None
         current_branch_name = None
         member_sequence = 0
         
+        # 如果是子表格式，设置默认支部名称
+        if not has_branch_info:
+            current_branch_name = default_branch_name
+            current_branch_sequence = 1
+        
         for row in range(header_row + 1, sheet.max_row + 1):
-            # 获取支部序号和名称（可能是合并单元格）
-            branch_seq_cell = column_mapping.get('branch_sequence')
-            branch_name_cell = column_mapping.get('branch_name')
+            # 获取必要的列
             name_cell = column_mapping.get('name')
             seq_cell = column_mapping.get('sequence')
             
-            # 如果没有姓名列，跳过这一行
-            if not name_cell:
+            # 尝试获取姓名
+            name_value = None
+            if name_cell:
+                name_value = self._get_merged_cell_value(sheet, row, name_cell)
+            
+            # 如果没有姓名列，但有序号列，尝试从下一列获取姓名
+            if not name_value and seq_cell:
+                # 检查序号列的下一列是否是姓名
+                next_col = seq_cell + 1
+                if next_col <= sheet.max_column:
+                    possible_name = self._get_merged_cell_value(sheet, row, next_col)
+                    if possible_name and str(possible_name).strip() not in ["", "合计"]:
+                        name_value = possible_name
+                        # 动态添加姓名列映射
+                        column_mapping['name'] = next_col
+            
+            # 如果仍然没有姓名，跳过
+            if not name_value:
                 continue
             
-            name_value = self._get_merged_cell_value(sheet, row, name_cell)
+            # 清理姓名
+            name_str = str(name_value).strip()
             
-            # 如果姓名为空，可能是合计行或空行
-            if not name_value or str(name_value).strip() == "" or str(name_value).strip() == "合计":
+            # 跳过合计行和空行
+            if name_str == "" or name_str == "合计" or name_str.startswith("合计"):
                 continue
             
-            # 获取支部信息
-            if branch_seq_cell:
-                branch_seq_value = self._get_merged_cell_value(sheet, row, branch_seq_cell)
-                if branch_seq_value is not None and str(branch_seq_value).strip() != "":
-                    try:
-                        current_branch_sequence = int(float(branch_seq_value))
-                    except (ValueError, TypeError):
-                        pass
-            
-            if branch_name_cell:
-                branch_name_value = self._get_merged_cell_value(sheet, row, branch_name_cell)
-                if branch_name_value is not None and str(branch_name_value).strip() != "":
-                    current_branch_name = str(branch_name_value).strip()
-            
-            # 如果没有支部信息，跳过
-            if not current_branch_name:
-                continue
+            # 处理总表格式
+            if has_branch_info:
+                # 获取支部序号和名称（可能是合并单元格）
+                branch_seq_cell = column_mapping.get('branch_sequence')
+                branch_name_cell = column_mapping.get('branch_name')
+                
+                # 获取支部信息
+                if branch_seq_cell:
+                    branch_seq_value = self._get_merged_cell_value(sheet, row, branch_seq_cell)
+                    if branch_seq_value is not None and str(branch_seq_value).strip() != "":
+                        try:
+                            current_branch_sequence = int(float(branch_seq_value))
+                        except (ValueError, TypeError):
+                            pass
+                
+                if branch_name_cell:
+                    branch_name_value = self._get_merged_cell_value(sheet, row, branch_name_cell)
+                    if branch_name_value is not None and str(branch_name_value).strip() != "":
+                        current_branch_name = str(branch_name_value).strip()
+                
+                # 如果没有支部信息，跳过（在总表格式下）
+                if not current_branch_name:
+                    continue
             
             # 获取或创建支部
             if current_branch_name not in branches_dict:
