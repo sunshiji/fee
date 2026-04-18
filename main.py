@@ -1,9 +1,10 @@
 # 党费收取系统主程序
 import os
 import sys
-from typing import List, Optional
+import glob
+from typing import List, Optional, Tuple
 
-from config import DEFAULT_YEAR, DEFAULT_MONTH, OUTPUT_DIR
+from config import DEFAULT_YEAR, DEFAULT_MONTH, OUTPUT_DIR, DATA_DIR
 from data_models import PartyMember, PartyBranch, SalaryInfo, DeductionInfo
 from member_manager import MemberManager
 from fee_calculator import FeeCalculator
@@ -20,6 +21,106 @@ class PartyFeeSystem:
         self.excel_generator = ExcelGenerator()
         self.current_year = DEFAULT_YEAR
         self.current_month = DEFAULT_MONTH
+        
+        # 自动加载已有数据
+        self._auto_load_data()
+    
+    def _auto_load_data(self):
+        """自动加载已有数据"""
+        print("\n" + "=" * 60)
+        print("党费收取系统 v1.0")
+        print("=" * 60)
+        
+        # 检查数据目录
+        if not os.path.exists(DATA_DIR):
+            print("\n数据目录不存在，这是第一次使用系统。")
+            print("请先添加党支部和党员信息。")
+            print("=" * 60)
+            return
+        
+        # 查找所有数据文件
+        data_files = glob.glob(os.path.join(DATA_DIR, "party_fee_data_*.json"))
+        
+        if not data_files:
+            print("\n未找到历史数据文件，这是第一次使用系统。")
+            print("请先添加党支部和党员信息。")
+            print("=" * 60)
+            return
+        
+        # 解析数据文件中的年月信息
+        available_data = []
+        for filepath in data_files:
+            filename = os.path.basename(filepath)
+            # 从文件名中提取年月，格式为 party_fee_data_YYYY_MM.json
+            parts = filename.replace(".json", "").split("_")
+            if len(parts) >= 5:
+                try:
+                    year = int(parts[3])
+                    month = int(parts[4])
+                    available_data.append((year, month, filepath))
+                except (ValueError, IndexError):
+                    continue
+        
+        if not available_data:
+            print("\n未找到有效的历史数据文件。")
+            print("=" * 60)
+            return
+        
+        # 按年月排序（最新的在前）
+        available_data.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        
+        print(f"\n找到 {len(available_data)} 个历史数据文件：")
+        print("-" * 60)
+        for i, (year, month, filepath) in enumerate(available_data, 1):
+            print(f"{i}. {year}年{month}月")
+        
+        print("-" * 60)
+        print("0. 开始新的月份（不加载历史数据）")
+        print("-" * 60)
+        
+        # 让用户选择
+        while True:
+            try:
+                choice = input(f"\n请选择要加载的数据 [默认: 1 - {available_data[0][0]}年{available_data[0][1]}月]: ").strip()
+                
+                if choice == "" or choice == "1":
+                    # 默认加载最新的
+                    selected = available_data[0]
+                    break
+                elif choice == "0":
+                    print("\n已选择开始新的月份。")
+                    print("=" * 60)
+                    return
+                else:
+                    choice_num = int(choice)
+                    if 1 <= choice_num <= len(available_data):
+                        selected = available_data[choice_num - 1]
+                        break
+                    else:
+                        print(f"请输入 0 到 {len(available_data)} 之间的数字！")
+            except ValueError:
+                print("请输入有效的数字！")
+        
+        # 加载选中的数据
+        year, month, filepath = selected
+        self.current_year = year
+        self.current_month = month
+        
+        if self.member_manager.load_from_file(year, month):
+            # 计算所有党费（确保数据是最新的）
+            branches = self.member_manager.get_all_branches()
+            FeeCalculator.calculate_all_fees(branches)
+            
+            total_branches = len(branches)
+            total_members = sum(len(b.members) for b in branches)
+            
+            print(f"\n成功加载 {year}年{month}月 的数据！")
+            print(f"  - 党支部数量: {total_branches}")
+            print(f"  - 党员总人数: {total_members}")
+            print("=" * 60)
+        else:
+            print(f"\n加载 {year}年{month}月 的数据失败！")
+            print("=" * 60)
     
     def display_menu(self):
         """显示主菜单"""
@@ -92,7 +193,7 @@ class PartyFeeSystem:
     def add_member(self):
         """添加党员"""
         print("\n添加党员")
-        print("-" * 40)
+        print("-" * 60)
         
         # 显示支部列表供选择
         branches = self.member_manager.get_all_branches()
@@ -112,71 +213,156 @@ class PartyFeeSystem:
             else:
                 print("无效的选项，请重新输入！")
         
-        # 输入党员基本信息
-        name = input("请输入党员姓名: ").strip()
-        if not name:
-            print("姓名不能为空！")
-            return
-        
-        # 检查党员是否已存在
-        existing_member = self.member_manager.get_member(name, selected_branch.name)
-        if existing_member:
-            print(f"党员 '{name}' 已在支部 '{selected_branch.name}' 中！")
-            return
-        
-        # 输入工资信息
-        print("\n请输入工资信息（单位：元）：")
-        position_salary = self.input_float("岗位工资", 0.0)
-        rank_salary = self.input_float("薪级工资", 0.0)
-        fixed_salary = self.input_float("高定工资", 0.0)
-        basic_performance = self.input_float("基础性绩效", 0.0)
-        
-        # 输入扣款信息
-        print("\n请输入扣款信息（单位：元）：")
-        housing_fund = self.input_float("住房公积金", 0.0)
-        medical_insurance = self.input_float("医疗保险", 0.0)
-        pension_insurance = self.input_float("养老保险", 0.0)
-        occupational_annuity = self.input_float("职业年金", 0.0)
-        large_medical = self.input_float("大额医疗", 0.0)
-        unemployment_insurance = self.input_float("失业保险", 0.0)
-        personal_income_tax = self.input_float("个人所得税", 0.0)
-        
-        # 创建党员对象
-        salary_info = SalaryInfo(
-            position_salary=position_salary,
-            rank_salary=rank_salary,
-            fixed_salary=fixed_salary,
-            basic_performance=basic_performance
-        )
-        
-        deduction_info = DeductionInfo(
-            housing_fund=housing_fund,
-            medical_insurance=medical_insurance,
-            pension_insurance=pension_insurance,
-            occupational_annuity=occupational_annuity,
-            large_medical=large_medical,
-            unemployment_insurance=unemployment_insurance,
-            personal_income_tax=personal_income_tax
-        )
-        
-        member = PartyMember(
-            name=name,
-            salary_info=salary_info,
-            deduction_info=deduction_info
-        )
-        
-        # 添加党员
-        try:
-            self.member_manager.add_member(member, selected_branch.name)
+        # 初始化党员信息收集
+        while True:
+            # 输入党员基本信息
+            print("\n" + "=" * 60)
+            print("请输入党员信息（输入 'q' 或 'quit' 取消）")
+            print("-" * 60)
             
-            # 自动计算党费
-            FeeCalculator.calculate_member_fee(member)
+            # 输入姓名
+            while True:
+                name = input("\n请输入党员姓名: ").strip()
+                if name.lower() in ['q', 'quit']:
+                    print("已取消添加党员。")
+                    return
+                if name:
+                    # 检查党员是否已存在
+                    existing_member = self.member_manager.get_member(name, selected_branch.name)
+                    if existing_member:
+                        print(f"党员 '{name}' 已在支部 '{selected_branch.name}' 中！")
+                        continue
+                    break
+                print("姓名不能为空！")
             
-            print(f"\n党员 '{name}' 已成功添加到支部 '{selected_branch.name}'！")
-            print(f"  缴费基数: {member.payment_base:.2f} 元")
-            print(f"  每月应缴党费: {member.monthly_fee:.2f} 元")
-        except Exception as e:
-            print(f"添加失败：{e}")
+            # 输入工资信息
+            print("\n请输入工资信息（单位：元，直接回车使用默认值 0）：")
+            print("-" * 60)
+            
+            position_salary = self.input_float("1. 岗位工资", 0.0)
+            rank_salary = self.input_float("2. 薪级工资", 0.0)
+            fixed_salary = self.input_float("3. 高定工资", 0.0)
+            basic_performance = self.input_float("4. 基础性绩效", 0.0)
+            
+            # 输入扣款信息
+            print("\n请输入扣款信息（单位：元，直接回车使用默认值 0）：")
+            print("-" * 60)
+            
+            housing_fund = self.input_float("5. 住房公积金", 0.0)
+            medical_insurance = self.input_float("6. 医疗保险", 0.0)
+            pension_insurance = self.input_float("7. 养老保险", 0.0)
+            occupational_annuity = self.input_float("8. 职业年金", 0.0)
+            large_medical = self.input_float("9. 大额医疗", 0.0)
+            unemployment_insurance = self.input_float("10. 失业保险", 0.0)
+            personal_income_tax = self.input_float("11. 个人所得税", 0.0)
+            
+            # 显示确认信息
+            while True:
+                print("\n" + "=" * 60)
+                print("请确认以下信息：")
+                print("-" * 60)
+                print(f"所属党支部: {selected_branch.name}")
+                print(f"党员姓名: {name}")
+                print("\n【工资信息】")
+                print(f"  1. 岗位工资: {position_salary:.2f} 元")
+                print(f"  2. 薪级工资: {rank_salary:.2f} 元")
+                print(f"  3. 高定工资: {fixed_salary:.2f} 元")
+                print(f"  4. 基础性绩效: {basic_performance:.2f} 元")
+                print("\n【扣款信息】")
+                print(f"  5. 住房公积金: {housing_fund:.2f} 元")
+                print(f"  6. 医疗保险: {medical_insurance:.2f} 元")
+                print(f"  7. 养老保险: {pension_insurance:.2f} 元")
+                print(f"  8. 职业年金: {occupational_annuity:.2f} 元")
+                print(f"  9. 大额医疗: {large_medical:.2f} 元")
+                print(f"  10. 失业保险: {unemployment_insurance:.2f} 元")
+                print(f"  11. 个人所得税: {personal_income_tax:.2f} 元")
+                print("-" * 60)
+                print("\n请选择操作：")
+                print("  1. 确认添加")
+                print("  2. 修改信息")
+                print("  3. 取消添加")
+                print("  或输入字段编号（1-11）修改对应字段")
+                print("-" * 60)
+                
+                confirm_choice = input("\n请选择 [默认: 1): ").strip()
+                
+                if confirm_choice == "" or confirm_choice == "1":
+                    # 确认添加
+                    # 创建党员对象
+                    salary_info = SalaryInfo(
+                        position_salary=position_salary,
+                        rank_salary=rank_salary,
+                        fixed_salary=fixed_salary,
+                        basic_performance=basic_performance
+                    )
+                    
+                    deduction_info = DeductionInfo(
+                        housing_fund=housing_fund,
+                        medical_insurance=medical_insurance,
+                        pension_insurance=pension_insurance,
+                        occupational_annuity=occupational_annuity,
+                        large_medical=large_medical,
+                        unemployment_insurance=unemployment_insurance,
+                        personal_income_tax=personal_income_tax
+                    )
+                    
+                    member = PartyMember(
+                        name=name,
+                        salary_info=salary_info,
+                        deduction_info=deduction_info
+                    )
+                    
+                    # 添加党员
+                    try:
+                        self.member_manager.add_member(member, selected_branch.name)
+                        
+                        # 自动计算党费
+                        FeeCalculator.calculate_member_fee(member)
+                        
+                        print(f"\n[成功] 党员 '{name}' 已添加到支部 '{selected_branch.name}'！")
+                        print(f"  缴费基数: {member.payment_base:.2f} 元")
+                        print(f"  每月应缴党费: {member.monthly_fee:.2f} 元")
+                    except Exception as e:
+                        print(f"添加失败：{e}")
+                    return
+                    
+                elif confirm_choice == "2":
+                    # 重新输入所有信息
+                    print("\n>>> 重新输入所有信息...")
+                    break  # 跳出确认循环，重新输入
+                    
+                elif confirm_choice == "3":
+                    print("已取消添加党员。")
+                    return
+                    
+                elif confirm_choice in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"]:
+                    # 修改特定字段
+                    field_num = int(confirm_choice)
+                    if field_num == 1:
+                        position_salary = self.input_float("请输入新的岗位工资", position_salary)
+                    elif field_num == 2:
+                        rank_salary = self.input_float("请输入新的薪级工资", rank_salary)
+                    elif field_num == 3:
+                        fixed_salary = self.input_float("请输入新的高定工资", fixed_salary)
+                    elif field_num == 4:
+                        basic_performance = self.input_float("请输入新的基础性绩效", basic_performance)
+                    elif field_num == 5:
+                        housing_fund = self.input_float("请输入新的住房公积金", housing_fund)
+                    elif field_num == 6:
+                        medical_insurance = self.input_float("请输入新的医疗保险", medical_insurance)
+                    elif field_num == 7:
+                        pension_insurance = self.input_float("请输入新的养老保险", pension_insurance)
+                    elif field_num == 8:
+                        occupational_annuity = self.input_float("请输入新的职业年金", occupational_annuity)
+                    elif field_num == 9:
+                        large_medical = self.input_float("请输入新的大额医疗", large_medical)
+                    elif field_num == 10:
+                        unemployment_insurance = self.input_float("请输入新的失业保险", unemployment_insurance)
+                    elif field_num == 11:
+                        personal_income_tax = self.input_float("请输入新的个人所得税", personal_income_tax)
+                    print(f"\n>>> 已修改字段，返回确认菜单...")
+                else:
+                    print("无效的选项，请重新输入！")
     
     def remove_member(self):
         """删除党员"""
@@ -407,47 +593,124 @@ class PartyFeeSystem:
     def add_branch(self):
         """添加党支部"""
         print("\n添加党支部")
-        print("-" * 40)
+        print("-" * 60)
         
-        name = input("请输入党支部名称: ").strip()
-        if not name:
-            print("党支部名称不能为空！")
-            return
-        
-        # 检查是否已存在
-        existing_branch = self.member_manager.get_branch(name)
-        if existing_branch:
-            print(f"党支部 '{name}' 已存在！")
-            return
-        
-        # 输入支部序号
         while True:
-            sequence = self.input_int("请输入支部序号", 0)
-            if sequence <= 0:
-                print("支部序号必须大于0！")
-                continue
+            # 输入党支部信息收集循环
+            print("\n" + "=" * 60)
+            print("请输入党支部信息（输入 'q' 或 'quit' 取消）")
+            print("-" * 60)
             
-            # 检查序号是否已存在
-            branches = self.member_manager.get_all_branches()
-            sequence_exists = any(b.sequence == sequence for b in branches)
-            if sequence_exists:
-                print(f"支部序号 '{sequence}' 已存在，请使用其他序号！")
-                continue
+            # 输入支部名称
+            while True:
+                name = input("\n请输入党支部名称: ").strip()
+                if name.lower() in ['q', 'quit']:
+                    print("已取消添加党支部。")
+                    return
+                if name:
+                    # 检查是否已存在
+                    existing_branch = self.member_manager.get_branch(name)
+                    if existing_branch:
+                        print(f"党支部 '{name}' 已存在！")
+                        continue
+                    break
+                print("党支部名称不能为空！")
             
-            break
-        
-        # 创建党支部对象
-        branch = PartyBranch(
-            name=name,
-            sequence=sequence
-        )
-        
-        # 添加党支部
-        try:
-            self.member_manager.add_branch(branch)
-            print(f"党支部 '{name}' 已成功添加！")
-        except Exception as e:
-            print(f"添加失败：{e}")
+            # 输入支部序号
+            print("\n请输入支部序号：")
+            
+            while True:
+                sequence = self.input_int("支部序号", 0)
+                if sequence <= 0:
+                    print("支部序号必须大于0！")
+                    continue
+                
+                # 检查序号是否已存在
+                branches = self.member_manager.get_all_branches()
+                sequence_exists = any(b.sequence == sequence for b in branches)
+                if sequence_exists:
+                    print(f"支部序号 '{sequence}' 已存在，请使用其他序号！")
+                    continue
+                
+                break
+            
+            # 显示确认信息
+            while True:
+                print("\n" + "=" * 60)
+                print("请确认以下信息：")
+                print("-" * 60)
+                print(f"1. 党支部名称: {name}")
+                print(f"2. 支部序号: {sequence}")
+                print("-" * 60)
+                print("\n请选择操作：")
+                print("  1. 确认添加")
+                print("  2. 修改信息")
+                print("  3. 取消添加")
+                print("  或输入字段编号（1-2）修改对应字段")
+                print("-" * 60)
+                
+                confirm_choice = input("\n请选择 [默认: 1): ").strip()
+                
+                if confirm_choice == "" or confirm_choice == "1":
+                    # 确认添加
+                    # 创建党支部对象
+                    branch = PartyBranch(
+                        name=name,
+                        sequence=sequence
+                    )
+                    
+                    # 添加党支部
+                    try:
+                        self.member_manager.add_branch(branch)
+                        print(f"\n[成功] 党支部 '{name}' 已添加！")
+                    except Exception as e:
+                        print(f"添加失败：{e}")
+                    return
+                    
+                elif confirm_choice == "2":
+                    # 重新输入所有信息
+                    print("\n>>> 重新输入所有信息...")
+                    break  # 跳出确认循环，重新输入
+                    
+                elif confirm_choice == "3":
+                    print("已取消添加党支部。")
+                    return
+                    
+                elif confirm_choice in ["1", "2"]:
+                    # 修改特定字段
+                    field_num = int(confirm_choice)
+                    if field_num == 1:
+                        while True:
+                            new_name = input("请输入新的党支部名称: ").strip()
+                            if new_name:
+                                # 检查是否已存在
+                                existing_branch = self.member_manager.get_branch(new_name)
+                                if existing_branch and new_name != name:
+                                    print(f"党支部 '{new_name}' 已存在！")
+                                    continue
+                                name = new_name
+                                break
+                            print(f"\n>>> 已修改支部名称，返回确认菜单...")
+                            break
+                    elif field_num == 2:
+                        while True:
+                            new_sequence = self.input_int("请输入新的支部序号", sequence)
+                            if new_sequence <= 0:
+                                print("支部序号必须大于0！")
+                                continue
+                            
+                            # 检查序号是否已存在
+                            branches = self.member_manager.get_all_branches()
+                            sequence_exists = any(b.sequence == new_sequence for b in branches)
+                            if sequence_exists and new_sequence != sequence:
+                                print(f"支部序号 '{new_sequence}' 已存在，请使用其他序号！")
+                                continue
+                            
+                            sequence = new_sequence
+                            break
+                        print(f"\n>>> 已修改支部序号，返回确认菜单...")
+                else:
+                    print("无效的选项，请重新输入！")
     
     def remove_branch(self):
         """删除党支部"""
