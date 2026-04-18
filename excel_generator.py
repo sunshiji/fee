@@ -1,0 +1,410 @@
+# Excel文件生成模块
+import os
+from typing import List, Optional
+from datetime import datetime
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from openpyxl.utils import get_column_letter
+
+from config import OUTPUT_DIR, COLLEGE_NAME
+from data_models import PartyBranch, PartyMember
+
+
+class ExcelGenerator:
+    """Excel文件生成器"""
+    
+    def __init__(self):
+        """初始化Excel生成器"""
+        self._ensure_output_dir()
+        
+        # 定义样式
+        self.title_font = Font(bold=True, size=16)
+        self.header_font = Font(bold=True, size=12)
+        self.normal_font = Font(size=11)
+        
+        self.center_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        self.left_alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        
+        self.thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        self.header_fill = PatternFill(start_color='E8E8E8', end_color='E8E8E8', fill_type='solid')
+        self.light_fill = PatternFill(start_color='F5F5F5', end_color='F5F5F5', fill_type='solid')
+    
+    def _ensure_output_dir(self):
+        """确保输出目录存在"""
+        if not os.path.exists(OUTPUT_DIR):
+            os.makedirs(OUTPUT_DIR)
+    
+    def generate_fee_detail_sheet(self, branches: List[PartyBranch], 
+                                    year: int, month: int) -> str:
+        """
+        生成党费收缴明细表
+        
+        包含所有支部的所有党员详细信息
+        """
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"{year}年{month}月党费收缴明细表"
+        
+        # 生成表格标题
+        title = f"{COLLEGE_NAME}{year}年{month}月党费收缴明细表"
+        
+        # 定义列宽
+        column_widths = [8, 25, 8, 15, 12, 12, 12, 14, 12, 12, 12, 12, 12, 12, 12, 12, 15, 12]
+        for i, width in enumerate(column_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = width
+        
+        # 第一行：标题
+        ws.merge_cells('A1:R1')
+        ws['A1'] = title
+        ws['A1'].font = self.title_font
+        ws['A1'].alignment = self.center_alignment
+        
+        # 第二行：二级标题（工资项目和扣款项目）
+        ws.merge_cells('F2:I2')  # 工资项目
+        ws['F2'] = "工资项目（元）"
+        ws['F2'].font = self.header_font
+        ws['F2'].alignment = self.center_alignment
+        
+        ws.merge_cells('J2:Q2')  # 扣款项目
+        ws['J2'] = "扣款项目（元）"
+        ws['J2'].font = self.header_font
+        ws['J2'].alignment = self.center_alignment
+        
+        # 第三行：列标题
+        headers = [
+            "支部序号", "所属党支部", "序号", "姓名",
+            "岗位工资", "薪级工资", "高定工资", "基础性绩效",  # 工资项目
+            "住房公积金", "医疗保险", "养老保险", "职业年金", 
+            "大额医疗", "失业保险", "个人所得税",  # 扣款项目
+            "缴费基数", "每月应缴党费（元）", "支部每月应缴党费（元）"
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=3, column=col, value=header)
+            cell.font = self.header_font
+            cell.alignment = self.center_alignment
+            cell.border = self.thin_border
+            cell.fill = self.header_fill
+        
+        # 填充数据
+        row = 4
+        current_branch_sequence = None
+        current_branch_name = None
+        branch_start_row = None
+        
+        for branch in sorted(branches, key=lambda b: b.sequence):
+            # 记录支部信息
+            branch_sequence = branch.sequence
+            branch_name = branch.name
+            branch_total_fee = sum(m.monthly_fee for m in branch.members)
+            
+            for member in branch.members:
+                # 支部序号（合并单元格）
+                if branch_sequence != current_branch_sequence:
+                    if current_branch_sequence is not None and branch_start_row is not None:
+                        # 合并上一个支部的序号单元格
+                        ws.merge_cells(f'A{branch_start_row}:A{row-1}')
+                        # 合并上一个支部的名称单元格
+                        ws.merge_cells(f'B{branch_start_row}:B{row-1}')
+                        # 合并上一个支部的总党费单元格
+                        ws.merge_cells(f'R{branch_start_row}:R{row-1}')
+                    
+                    current_branch_sequence = branch_sequence
+                    current_branch_name = branch_name
+                    branch_start_row = row
+                
+                # 填充数据
+                ws.cell(row=row, column=1, value=branch_sequence).alignment = self.center_alignment
+                ws.cell(row=row, column=2, value=branch_name).alignment = self.center_alignment
+                ws.cell(row=row, column=3, value=member.sequence).alignment = self.center_alignment
+                ws.cell(row=row, column=4, value=member.name).alignment = self.left_alignment
+                
+                # 工资项目
+                ws.cell(row=row, column=5, value=member.salary_info.position_salary).alignment = self.center_alignment
+                ws.cell(row=row, column=6, value=member.salary_info.rank_salary).alignment = self.center_alignment
+                ws.cell(row=row, column=7, value=member.salary_info.fixed_salary).alignment = self.center_alignment
+                ws.cell(row=row, column=8, value=member.salary_info.basic_performance).alignment = self.center_alignment
+                
+                # 扣款项目
+                ws.cell(row=row, column=9, value=member.deduction_info.housing_fund).alignment = self.center_alignment
+                ws.cell(row=row, column=10, value=member.deduction_info.medical_insurance).alignment = self.center_alignment
+                ws.cell(row=row, column=11, value=member.deduction_info.pension_insurance).alignment = self.center_alignment
+                ws.cell(row=row, column=12, value=member.deduction_info.occupational_annuity).alignment = self.center_alignment
+                ws.cell(row=row, column=13, value=member.deduction_info.large_medical).alignment = self.center_alignment
+                ws.cell(row=row, column=14, value=member.deduction_info.unemployment_insurance).alignment = self.center_alignment
+                ws.cell(row=row, column=15, value=member.deduction_info.personal_income_tax).alignment = self.center_alignment
+                
+                # 缴费基数和党费
+                ws.cell(row=row, column=16, value=member.payment_base).alignment = self.center_alignment
+                ws.cell(row=row, column=17, value=member.monthly_fee).alignment = self.center_alignment
+                ws.cell(row=row, column=18, value=branch_total_fee).alignment = self.center_alignment
+                
+                # 应用边框
+                for col in range(1, 19):
+                    ws.cell(row=row, column=col).border = self.thin_border
+                    # 交替行背景色
+                    if row % 2 == 0:
+                        ws.cell(row=row, column=col).fill = self.light_fill
+                
+                row += 1
+            
+            # 处理最后一个支部的合并单元格
+            if branch_start_row is not None and branch_start_row < row:
+                ws.merge_cells(f'A{branch_start_row}:A{row-1}')
+                ws.merge_cells(f'B{branch_start_row}:B{row-1}')
+                ws.merge_cells(f'R{branch_start_row}:R{row-1}')
+        
+        # 设置行高
+        ws.row_dimensions[1].height = 30
+        ws.row_dimensions[2].height = 25
+        ws.row_dimensions[3].height = 40
+        
+        # 保存文件
+        filename = f"{year}年{month}月党费收缴明细表.xlsx"
+        filepath = os.path.join(OUTPUT_DIR, filename)
+        wb.save(filepath)
+        
+        return filepath
+    
+    def generate_branch_fee_sheet(self, branch: PartyBranch, 
+                                    year: int, month: int) -> str:
+        """
+        生成单个支部的党费收缴明细
+        
+        每个支部一个单独的表格
+        """
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"{branch.name}党费收缴明细"
+        
+        # 生成表格标题
+        title = f"{year}年{COLLEGE_NAME}{branch.name}{month}月党费收缴明细"
+        
+        # 定义列宽
+        column_widths = [8, 15, 12, 12, 12, 14, 12, 12, 12, 12, 12, 12, 12, 15, 12]
+        for i, width in enumerate(column_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = width
+        
+        # 第一行：标题
+        ws.merge_cells('A1:O1')
+        ws['A1'] = title
+        ws['A1'].font = self.title_font
+        ws['A1'].alignment = self.center_alignment
+        
+        # 第二行：二级标题（工资项目和扣款项目）
+        ws.merge_cells('C2:F2')  # 工资项目
+        ws['C2'] = "工资项目（元）"
+        ws['C2'].font = self.header_font
+        ws['C2'].alignment = self.center_alignment
+        
+        ws.merge_cells('G2:N2')  # 扣款项目
+        ws['G2'] = "扣款项目（元）"
+        ws['G2'].font = self.header_font
+        ws['G2'].alignment = self.center_alignment
+        
+        # 第三行：列标题
+        headers = [
+            "序号", "姓名",
+            "岗位工资", "薪级工资", "高定工资", "基础性绩效",  # 工资项目
+            "住房公积金", "医疗保险", "养老保险", "职业年金", 
+            "大额医疗", "失业保险", "个人所得税",  # 扣款项目
+            "缴费基数", "每月应缴党费（元）"
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=3, column=col, value=header)
+            cell.font = self.header_font
+            cell.alignment = self.center_alignment
+            cell.border = self.thin_border
+            cell.fill = self.header_fill
+        
+        # 填充数据
+        row = 4
+        for member in branch.members:
+            # 填充数据
+            ws.cell(row=row, column=1, value=member.sequence).alignment = self.center_alignment
+            ws.cell(row=row, column=2, value=member.name).alignment = self.left_alignment
+            
+            # 工资项目
+            ws.cell(row=row, column=3, value=member.salary_info.position_salary).alignment = self.center_alignment
+            ws.cell(row=row, column=4, value=member.salary_info.rank_salary).alignment = self.center_alignment
+            ws.cell(row=row, column=5, value=member.salary_info.fixed_salary).alignment = self.center_alignment
+            ws.cell(row=row, column=6, value=member.salary_info.basic_performance).alignment = self.center_alignment
+            
+            # 扣款项目
+            ws.cell(row=row, column=7, value=member.deduction_info.housing_fund).alignment = self.center_alignment
+            ws.cell(row=row, column=8, value=member.deduction_info.medical_insurance).alignment = self.center_alignment
+            ws.cell(row=row, column=9, value=member.deduction_info.pension_insurance).alignment = self.center_alignment
+            ws.cell(row=row, column=10, value=member.deduction_info.occupational_annuity).alignment = self.center_alignment
+            ws.cell(row=row, column=11, value=member.deduction_info.large_medical).alignment = self.center_alignment
+            ws.cell(row=row, column=12, value=member.deduction_info.unemployment_insurance).alignment = self.center_alignment
+            ws.cell(row=row, column=13, value=member.deduction_info.personal_income_tax).alignment = self.center_alignment
+            
+            # 缴费基数和党费
+            ws.cell(row=row, column=14, value=member.payment_base).alignment = self.center_alignment
+            ws.cell(row=row, column=15, value=member.monthly_fee).alignment = self.center_alignment
+            
+            # 应用边框
+            for col in range(1, 16):
+                ws.cell(row=row, column=col).border = self.thin_border
+                # 交替行背景色
+                if row % 2 == 0:
+                    ws.cell(row=row, column=col).fill = self.light_fill
+            
+            row += 1
+        
+        # 添加合计行
+        total_row = row
+        ws.merge_cells(f'A{total_row}:N{total_row}')
+        ws.cell(row=total_row, column=1, value="合计").font = self.header_font
+        ws.cell(row=total_row, column=1).alignment = self.center_alignment
+        ws.cell(row=total_row, column=1).fill = self.header_fill
+        
+        # 计算总党费
+        total_fee = sum(member.monthly_fee for member in branch.members)
+        ws.cell(row=total_row, column=15, value=total_fee).font = self.header_font
+        ws.cell(row=total_row, column=15).alignment = self.center_alignment
+        ws.cell(row=total_row, column=15).fill = self.header_fill
+        
+        # 应用边框到合计行
+        for col in range(1, 16):
+            ws.cell(row=total_row, column=col).border = self.thin_border
+        
+        # 设置行高
+        ws.row_dimensions[1].height = 30
+        ws.row_dimensions[2].height = 25
+        ws.row_dimensions[3].height = 40
+        
+        # 保存文件
+        filename = f"{year}年{month}月{branch.name}党费收缴明细.xlsx"
+        filepath = os.path.join(OUTPUT_DIR, filename)
+        wb.save(filepath)
+        
+        return filepath
+    
+    def generate_all_branch_sheets(self, branches: List[PartyBranch], 
+                                     year: int, month: int) -> List[str]:
+        """
+        生成所有支部的党费收缴明细
+        
+        每个支部一个单独的Excel文件
+        """
+        generated_files = []
+        
+        for branch in branches:
+            filepath = self.generate_branch_fee_sheet(branch, year, month)
+            generated_files.append(filepath)
+        
+        return generated_files
+    
+    def generate_summary_sheet(self, branches: List[PartyBranch], 
+                                year: int, month: int) -> str:
+        """
+        生成党费汇总表
+        
+        包含各支部的党员人数和党费金额汇总
+        """
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"{year}年{month}月党费汇总表"
+        
+        # 生成表格标题
+        title_line1 = f"{year}年{COLLEGE_NAME}"
+        title_line2 = f"{month}月党费汇总表"
+        
+        # 定义列宽
+        column_widths = [8, 30, 12, 12, 20]
+        for i, width in enumerate(column_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = width
+        
+        # 第一行：标题第一部分
+        ws.merge_cells('A1:E1')
+        ws['A1'] = title_line1
+        ws['A1'].font = self.title_font
+        ws['A1'].alignment = self.center_alignment
+        
+        # 第二行：标题第二部分
+        ws.merge_cells('A2:E2')
+        ws['A2'] = title_line2
+        ws['A2'].font = self.title_font
+        ws['A2'].alignment = self.center_alignment
+        
+        # 第三行：列标题
+        headers = [
+            "序号", "支部名称", "党员人数", "金额", "备注"
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=3, column=col, value=header)
+            cell.font = self.header_font
+            cell.alignment = self.center_alignment
+            cell.border = self.thin_border
+            cell.fill = self.header_fill
+        
+        # 填充数据
+        row = 4
+        total_members = 0
+        total_fee = 0.0
+        
+        for i, branch in enumerate(sorted(branches, key=lambda b: b.sequence), 1):
+            branch_member_count = len(branch.members)
+            branch_total_fee = sum(m.monthly_fee for m in branch.members)
+            
+            total_members += branch_member_count
+            total_fee += branch_total_fee
+            
+            # 填充数据
+            ws.cell(row=row, column=1, value=i).alignment = self.center_alignment
+            ws.cell(row=row, column=2, value=branch.name).alignment = self.left_alignment
+            ws.cell(row=row, column=3, value=branch_member_count).alignment = self.center_alignment
+            ws.cell(row=row, column=4, value=branch_total_fee).alignment = self.center_alignment
+            ws.cell(row=row, column=5, value="").alignment = self.left_alignment
+            
+            # 应用边框
+            for col in range(1, 6):
+                ws.cell(row=row, column=col).border = self.thin_border
+                # 交替行背景色
+                if row % 2 == 0:
+                    ws.cell(row=row, column=col).fill = self.light_fill
+            
+            row += 1
+        
+        # 添加合计行
+        total_row = row
+        ws.merge_cells(f'A{total_row}:B{total_row}')
+        ws.cell(row=total_row, column=1, value="合计").font = self.header_font
+        ws.cell(row=total_row, column=1).alignment = self.center_alignment
+        ws.cell(row=total_row, column=1).fill = self.header_fill
+        
+        ws.cell(row=total_row, column=3, value=total_members).font = self.header_font
+        ws.cell(row=total_row, column=3).alignment = self.center_alignment
+        ws.cell(row=total_row, column=3).fill = self.header_fill
+        
+        ws.cell(row=total_row, column=4, value=total_fee).font = self.header_font
+        ws.cell(row=total_row, column=4).alignment = self.center_alignment
+        ws.cell(row=total_row, column=4).fill = self.header_fill
+        
+        ws.cell(row=total_row, column=5, value="").fill = self.header_fill
+        
+        # 应用边框到合计行
+        for col in range(1, 6):
+            ws.cell(row=total_row, column=col).border = self.thin_border
+        
+        # 设置行高
+        ws.row_dimensions[1].height = 30
+        ws.row_dimensions[2].height = 30
+        ws.row_dimensions[3].height = 25
+        
+        # 保存文件
+        filename = f"{year}年{month}月党费汇总表.xlsx"
+        filepath = os.path.join(OUTPUT_DIR, filename)
+        wb.save(filepath)
+        
+        return filepath

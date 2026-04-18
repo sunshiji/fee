@@ -1,0 +1,117 @@
+{
+  "year": 2026,
+  "month": 2,
+  "created_at": "2026-04-18T19:17:19.952443",
+  "branches": [
+    {
+      "id": "",
+      "name": "教工第一支部",
+      "sequence": 1,
+      "members": [
+        {
+          "id": "",
+          "name": "张三",
+          "branch_name": "教工第一支部",
+          "branch_sequence": 1,
+          "sequence": 1,
+          "salary_info": {
+            "position_salary": 2185.0,
+            "rank_salary": 692.0,
+            "fixed_salary": 0.0,
+            "basic_performance": 1100.0
+          },
+          "deduction_info": {
+            "housing_fund": 1094.0,
+            "medical_insurance": 152.62,
+            "pension_insurance": 706.72,
+            "occupational_annuity": 353.36,
+            "large_medical": 39.66,
+            "unemployment_insurance": 44.17,
+            "personal_income_tax": 0.0
+          },
+          "payment_base": 0.0,
+          "monthly_fee": 0.0
+        },
+        {
+          "id": "",
+          "name": "李四",
+          "branch_name": "教工第一支部",
+          "branch_sequence": 1,
+          "sequence": 2,
+          "salary_info": {
+            "position_salary": 2375.0,
+            "rank_salary": 845.0,
+            "fixed_salary": 0.0,
+            "basic_performance": 2030.0
+          },
+          "deduction_info": {
+            "housing_fund": 1200.0,
+            "medical_insurance": 165.78,
+            "pension_insurance": 785.62,
+            "occupational_annuity": 392.81,
+            "large_medical": 45.32,
+            "unemployment_insurance": 52.43,
+            "personal_income_tax": 67.57
+          },
+          "payment_base": 0.0,
+          "monthly_fee": 0.0
+        }
+      ]
+    },
+    {
+      "id": "",
+      "name": "本科生第一支部",
+      "sequence": 2,
+      "members": [
+        {
+          "id": "",
+          "name": "王五",
+          "branch_name": "本科生第一支部",
+          "branch_sequence": 2,
+          "sequence": 1,
+          "salary_info": {
+            "position_salary": 0.0,
+            "rank_salary": 0.0,
+            "fixed_salary": 0.0,
+            "basic_performance": 0.0
+          },
+          "deduction_info": {
+            "housing_fund": 0.0,
+            "medical_insurance": 0.0,
+            "pension_insurance": 0.0,
+            "occupational_annuity": 0.0,
+            "large_medical": 0.0,
+            "unemployment_insurance": 0.0,
+            "personal_income_tax": 0.0
+          },
+          "payment_base": 0.0,
+          "monthly_fee": 0.0
+        },
+        {
+          "id": "",
+          "name": "赵六",
+          "branch_name": "本科生第一支部",
+          "branch_sequence": 2,
+          "sequence": 2,
+          "salary_info": {
+            "position_salary": 0.0,
+            "rank_salary": 0.0,
+            "fixed_salary": 0.0,
+            "basic_performance": 0.0
+          },
+          "deduction_info": {
+            "housing_fund": 0.0,
+            "medical_insurance": 0.0,
+            "pension_insurance": 0.0,
+            "occupational_annuity": 0.0,
+            "large_medical": 0.0,
+            "unemployment_insurance": 0.0,
+            "personal_income_tax": 0.0
+          },
+          "payment_base": 0.0,
+          "monthly_fee": 0.0
+        }
+      ]
+    }
+  ]
+}
