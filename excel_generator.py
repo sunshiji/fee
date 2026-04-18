@@ -1,5 +1,6 @@
 # Excel文件生成模块
 import os
+import shutil
 from typing import List, Optional
 from datetime import datetime
 
@@ -40,6 +41,62 @@ class ExcelGenerator:
         """确保输出目录存在"""
         if not os.path.exists(OUTPUT_DIR):
             os.makedirs(OUTPUT_DIR)
+    
+    def _get_month_dir(self, year: int, month: int, create: bool = True) -> str:
+        """
+        获取月份目录路径
+        
+        Args:
+            year: 年份
+            month: 月份
+            create: 是否创建目录
+            
+        Returns:
+            月份目录的完整路径
+        """
+        month_dir = os.path.join(OUTPUT_DIR, f"{year}年{month}月")
+        
+        if create and not os.path.exists(month_dir):
+            os.makedirs(month_dir)
+        
+        return month_dir
+    
+    def _get_sub_sheet_dir(self, year: int, month: int, create: bool = True) -> str:
+        """
+        获取子表目录路径（党费收缴子表）
+        
+        Args:
+            year: 年份
+            month: 月份
+            create: 是否创建目录
+            
+        Returns:
+            子表目录的完整路径
+        """
+        month_dir = self._get_month_dir(year, month, create)
+        sub_sheet_dir = os.path.join(month_dir, "党费收缴子表")
+        
+        if create and not os.path.exists(sub_sheet_dir):
+            os.makedirs(sub_sheet_dir)
+        
+        return sub_sheet_dir
+    
+    def _cleanup_old_files(self, year: int, month: int):
+        """
+        清理旧文件（在生成新报表前调用）
+        
+        Args:
+            year: 年份
+            month: 月份
+        """
+        month_dir = self._get_month_dir(year, month, create=False)
+        
+        if os.path.exists(month_dir):
+            # 删除整个月份目录，然后重新创建
+            shutil.rmtree(month_dir)
+            # 重新创建目录结构
+            self._get_month_dir(year, month, create=True)
+            self._get_sub_sheet_dir(year, month, create=True)
     
     def generate_fee_detail_sheet(self, branches: List[PartyBranch], 
                                     year: int, month: int) -> str:
@@ -166,9 +223,10 @@ class ExcelGenerator:
         ws.row_dimensions[2].height = 25
         ws.row_dimensions[3].height = 40
         
-        # 保存文件
+        # 保存文件到月份目录
+        month_dir = self._get_month_dir(year, month)
         filename = f"{year}年{month}月党费收缴明细表.xlsx"
-        filepath = os.path.join(OUTPUT_DIR, filename)
+        filepath = os.path.join(month_dir, filename)
         wb.save(filepath)
         
         return filepath
@@ -282,9 +340,13 @@ class ExcelGenerator:
         ws.row_dimensions[2].height = 25
         ws.row_dimensions[3].height = 40
         
-        # 保存文件
-        filename = f"{year}年{month}月{branch.name}党费收缴明细.xlsx"
-        filepath = os.path.join(OUTPUT_DIR, filename)
+        # 保存文件到子表目录（党费收缴子表）
+        sub_sheet_dir = self._get_sub_sheet_dir(year, month)
+        # 改进命名规则，与总表有明显区别
+        # 总表命名：2026年2月党费收缴明细表.xlsx
+        # 子表命名：2026年2月-教工第一支部-党费收缴子表.xlsx
+        filename = f"{year}年{month}月-{branch.name}-党费收缴子表.xlsx"
+        filepath = os.path.join(sub_sheet_dir, filename)
         wb.save(filepath)
         
         return filepath
@@ -402,9 +464,10 @@ class ExcelGenerator:
         ws.row_dimensions[2].height = 30
         ws.row_dimensions[3].height = 25
         
-        # 保存文件
+        # 保存文件到月份目录
+        month_dir = self._get_month_dir(year, month)
         filename = f"{year}年{month}月党费汇总表.xlsx"
-        filepath = os.path.join(OUTPUT_DIR, filename)
+        filepath = os.path.join(month_dir, filename)
         wb.save(filepath)
         
         return filepath

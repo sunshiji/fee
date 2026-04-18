@@ -12,6 +12,13 @@ from excel_generator import ExcelGenerator
 from statistics import FeeStatistics
 
 
+class ImportMode:
+    """导入模式"""
+    ADD = "add"
+    REPLACE = "replace"
+    MERGE = "merge"
+
+
 class PartyFeeSystem:
     """党费收取系统主类"""
     
@@ -140,6 +147,7 @@ class PartyFeeSystem:
         print("9. 保存数据")
         print("10. 加载数据")
         print("11. 设置年月")
+        print("12. 导入外部表格数据")
         print("0. 退出系统")
         print("=" * 60)
     
@@ -1030,6 +1038,290 @@ class PartyFeeSystem:
         
         print(f"\n已设置为: {year}年{month}月")
     
+    def display_import_menu(self):
+        """显示导入菜单"""
+        print("\n" + "-" * 60)
+        print("导入外部表格数据")
+        print("-" * 60)
+        print("1. 导入Excel明细表（总表）")
+        print("2. 导入Excel子表（各支部表）")
+        print("3. 导入Word汇总表（仅查看统计）")
+        print("4. 自动检测并导入")
+        print("0. 返回主菜单")
+        print("-" * 60)
+        print("\n说明：")
+        print("  - Excel明细表：包含所有支部所有党员的完整信息")
+        print("  - Excel子表：每个工作表对应一个支部的党员信息")
+        print("  - Word汇总表：仅包含统计信息，不含详细党员数据")
+        print("  - 自动检测：根据文件名和结构自动判断类型")
+    
+    def import_external_data(self):
+        """导入外部数据主方法"""
+        from excel_importer import ExcelImporter
+        from word_importer import WordImporter, check_word_dependency
+        
+        importer = ExcelImporter()
+        word_importer = WordImporter()
+        
+        while True:
+            self.display_import_menu()
+            choice = self.input_int("请选择操作", 0)
+            
+            if choice == 0:
+                break
+            
+            # 询问文件路径
+            print("\n" + "-" * 60)
+            print("文件路径输入说明：")
+            print("  - 可以输入绝对路径（如：D:\\data\\2026年2月党费收缴明细表.xlsx）")
+            print("  - 可以输入相对路径（如：2026年2月党费收缴明细表.xlsx）")
+            print("  - 输入 'q' 或 'quit' 取消操作")
+            print("-" * 60)
+            
+            filepath = input("\n请输入文件路径: ").strip()
+            
+            if filepath.lower() in ['q', 'quit']:
+                print("已取消导入")
+                continue
+            
+            # 处理路径中的引号
+            filepath = filepath.strip('"').strip("'")
+            
+            if not os.path.exists(filepath):
+                print(f"\n错误：文件不存在 - {filepath}")
+                # 尝试在output目录查找
+                possible_path = os.path.join(OUTPUT_DIR, filepath)
+                if os.path.exists(possible_path):
+                    print(f"提示：在 output 目录找到了同名文件")
+                    use_it = input("是否使用该文件？(y/n): ").strip().lower()
+                    if use_it == 'y':
+                        filepath = possible_path
+                    else:
+                        continue
+                else:
+                    continue
+            
+            # 根据选择导入
+            if choice == 1:
+                # 导入Excel明细表
+                result = importer.import_from_file(filepath, sheet_type='detail')
+            elif choice == 2:
+                # 导入Excel子表
+                result = importer.import_from_file(filepath, sheet_type='branch')
+            elif choice == 3:
+                # 导入Word汇总表
+                if not check_word_dependency():
+                    print("\n" + "!" * 60)
+                    print("警告：未安装 python-docx 库，无法解析Word文件")
+                    print("请运行: pip install python-docx")
+                    print("!" * 60)
+                    continue
+                
+                word_result = word_importer.import_from_file(filepath)
+                
+                if word_result.errors:
+                    print("\n错误信息：")
+                    for error in word_result.errors:
+                        print(f"  - {error}")
+                else:
+                    print("\n" + "=" * 60)
+                    print("Word汇总表信息")
+                    print("=" * 60)
+                    
+                    if word_result.summary_data.get('title'):
+                        print(f"文档标题: {word_result.summary_data['title']}")
+                    
+                    branches = word_result.summary_data.get('branches', [])
+                    if branches:
+                        print(f"\n共找到 {len(branches)} 个支部的汇总信息：")
+                        print("-" * 60)
+                        print(f"{'序号':<6}{'支部名称':<25}{'党员人数':<10}{'金额':<12}{'备注':<15}")
+                        print("-" * 60)
+                        
+                        total_count = 0
+                        total_amount = 0.0
+                        
+                        for item in branches:
+                            seq = item.get('sequence', '-')
+                            name = item.get('branch_name', '未知')
+                            count = item.get('member_count', 0)
+                            amount = item.get('amount', 0.0)
+                            remark = item.get('remark', '')
+                            
+                            try:
+                                total_count += int(count)
+                            except:
+                                pass
+                            try:
+                                total_amount += float(amount)
+                            except:
+                                pass
+                            
+                            print(f"{str(seq):<6}{name:<25}{str(count):<10}{str(amount):<12}{remark:<15}")
+                        
+                        print("-" * 60)
+                        print(f"{'合计':<6}{'':<25}{total_count:<10}{total_amount:<12.2f}")
+                        print("=" * 60)
+                        print("\n注意：Word汇总表仅包含统计信息，不包含详细党员数据")
+                        print("如果需要导入完整的党员信息，请使用Excel格式的明细表或子表")
+                    else:
+                        print("未找到可解析的汇总数据")
+                
+                continue
+            
+            elif choice == 4:
+                # 自动检测并导入
+                file_type = importer.detect_file_type(filepath)
+                print(f"\n检测到文件类型: {file_type}")
+                
+                if file_type in ['detail', 'branch']:
+                    result = importer.import_from_file(filepath, sheet_type=file_type)
+                elif file_type == 'summary':
+                    print("检测到汇总表，仅显示统计信息")
+                    if filepath.endswith(('.xlsx', '.xls')):
+                        result = importer.import_from_file(filepath, sheet_type='summary')
+                    else:
+                        # 可能是Word文件
+                        if not check_word_dependency():
+                            print("\n警告：未安装 python-docx 库")
+                            print("请运行: pip install python-docx")
+                            continue
+                        word_result = word_importer.import_from_file(filepath)
+                        if word_result.summary_data.get('branches'):
+                            print(f"\n找到 {len(word_result.summary_data['branches'])} 个支部的汇总信息")
+                        continue
+                else:
+                    # 默认为明细表
+                    result = importer.import_from_file(filepath, sheet_type='detail')
+            else:
+                print("无效的选项，请重新输入！")
+                continue
+            
+            # 处理导入结果
+            if result.warnings:
+                print("\n提示信息：")
+                for warning in result.warnings:
+                    print(f"  - {warning}")
+            
+            if result.errors:
+                print("\n错误信息：")
+                for error in result.errors:
+                    print(f"  - {error}")
+            
+            if not result.success:
+                print("\n导入失败！")
+                continue
+            
+            # 显示导入预览
+            print("\n" + "=" * 60)
+            print("导入预览")
+            print("=" * 60)
+            print(f"导入的支部数量: {result.total_branches}")
+            print(f"导入的党员数量: {result.total_members}")
+            print("\n支部列表：")
+            print("-" * 60)
+            print(f"{'序号':<6}{'支部名称':<30}{'党员人数':<10}")
+            print("-" * 60)
+            
+            for branch in result.branches:
+                print(f"{branch.sequence:<6}{branch.name:<30}{len(branch.members):<10}")
+            
+            print("=" * 60)
+            
+            # 询问导入模式
+            print("\n请选择导入模式：")
+            print("  1. 追加（在现有数据基础上添加）")
+            print("  2. 替换（删除现有数据，使用导入的数据）")
+            print("  3. 合并（合并同名支部的党员）")
+            print("  0. 取消导入")
+            
+            mode_choice = self.input_int("请选择", 0)
+            
+            if mode_choice == 0:
+                print("已取消导入")
+                continue
+            
+            # 执行导入
+            if mode_choice == 1:
+                # 追加模式
+                self._import_append(result.branches)
+                print("\n[OK] 已追加导入数据")
+            elif mode_choice == 2:
+                # 替换模式
+                self._import_replace(result.branches)
+                print("\n[OK] 已替换现有数据")
+            elif mode_choice == 3:
+                # 合并模式
+                self._import_merge(result.branches)
+                print("\n[OK] 已合并导入数据")
+            else:
+                print("无效的选项，已取消导入")
+                continue
+            
+            # 提示保存
+            print("\n提示：导入的数据还未保存，建议使用菜单选项 '9. 保存数据' 进行保存")
+    
+    def _import_append(self, new_branches: List[PartyBranch]):
+        """
+        追加模式导入
+        
+        将新的支部和党员添加到现有数据中
+        """
+        # 获取当前最大的支部序号和党员序号
+        existing_branches = self.member_manager.get_all_branches()
+        max_branch_seq = max((b.sequence for b in existing_branches), default=0)
+        
+        # 为新的支部分配序号
+        for branch in new_branches:
+            max_branch_seq += 1
+            branch.sequence = max_branch_seq
+            # 更新党员的支部序号
+            for member in branch.members:
+                member.branch_sequence = max_branch_seq
+            # 添加到管理器
+            self.member_manager.add_branch(branch)
+    
+    def _import_replace(self, new_branches: List[PartyBranch]):
+        """
+        替换模式导入
+        
+        删除现有数据，使用导入的数据
+        """
+        # 清除现有数据
+        self.member_manager = MemberManager()
+        
+        # 添加导入的数据
+        for branch in new_branches:
+            self.member_manager.add_branch(branch)
+    
+    def _import_merge(self, new_branches: List[PartyBranch]):
+        """
+        合并模式导入
+        
+        合并同名支部的党员
+        """
+        existing_branches = self.member_manager.get_all_branches()
+        existing_branch_dict = {b.name: b for b in existing_branches}
+        
+        for new_branch in new_branches:
+            if new_branch.name in existing_branch_dict:
+                # 同名支部存在，合并党员
+                existing_branch = existing_branch_dict[new_branch.name]
+                
+                # 为新党员分配序号
+                start_seq = len(existing_branch.members) + 1
+                for i, member in enumerate(new_branch.members):
+                    member.sequence = start_seq + i
+                    member.branch_sequence = existing_branch.sequence
+                    existing_branch.members.append(member)
+            else:
+                # 新支部，直接添加
+                max_branch_seq = max((b.sequence for b in existing_branches), default=0)
+                new_branch.sequence = max_branch_seq + 1
+                for member in new_branch.members:
+                    member.branch_sequence = new_branch.sequence
+                self.member_manager.add_branch(new_branch)
+    
     def run_person_management(self):
         """运行人员维护管理"""
         while True:
@@ -1103,6 +1395,8 @@ class PartyFeeSystem:
                 self.load_data()
             elif choice == 11:
                 self.set_year_month()
+            elif choice == 12:
+                self.import_external_data()
             else:
                 print("无效的选项，请重新输入！")
 
