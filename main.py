@@ -168,7 +168,13 @@ class PartyFeeSystem:
         # 添加党员
         try:
             self.member_manager.add_member(member, selected_branch.name)
+            
+            # 自动计算党费
+            FeeCalculator.calculate_member_fee(member)
+            
             print(f"\n党员 '{name}' 已成功添加到支部 '{selected_branch.name}'！")
+            print(f"  缴费基数: {member.payment_base:.2f} 元")
+            print(f"  每月应缴党费: {member.monthly_fee:.2f} 元")
         except Exception as e:
             print(f"添加失败：{e}")
     
@@ -322,7 +328,12 @@ class PartyFeeSystem:
             salary_info, 
             deduction_info
         ):
+            # 重新计算党费
+            FeeCalculator.calculate_member_fee(selected_member)
+            
             print(f"党员 '{selected_member.name}' 信息已成功更新！")
+            print(f"  新的缴费基数: {selected_member.payment_base:.2f} 元")
+            print(f"  新的每月应缴党费: {selected_member.monthly_fee:.2f} 元")
         else:
             print("更新失败！")
     
@@ -336,8 +347,11 @@ class PartyFeeSystem:
             print("暂无党员数据！")
             return
         
-        # 按支部分组显示
+        # 确保所有党员的党费都已计算
         branches = self.member_manager.get_all_branches()
+        FeeCalculator.calculate_all_fees(branches)
+        
+        # 按支部分组显示
         for branch in branches:
             if branch.members:
                 print(f"\n【{branch.name}】（共{len(branch.members)}人）")
@@ -362,6 +376,9 @@ class PartyFeeSystem:
         if not member:
             print(f"未找到党员 '{name}'！")
             return
+        
+        # 确保党费已计算
+        FeeCalculator.calculate_member_fee(member)
         
         print("\n" + "=" * 50)
         print(f"党员 '{member.name}' 详细信息")
