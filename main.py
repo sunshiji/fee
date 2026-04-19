@@ -12,11 +12,6 @@ from excel_generator import ExcelGenerator
 from statistics import FeeStatistics
 
 
-class UserCancelException(Exception):
-    """用户取消操作异常"""
-    pass
-
-
 class ImportMode:
     """导入模式"""
     ADD = "add"
@@ -88,7 +83,6 @@ class PartyFeeSystem:
         
         print("-" * 60)
         print("0. 开始新的月份（不加载历史数据）")
-        print("q. 退出系统")
         print("-" * 60)
         
         # 让用户选择
@@ -96,10 +90,7 @@ class PartyFeeSystem:
             try:
                 choice = input(f"\n请选择要加载的数据 [默认: 1 - {available_data[0][0]}年{available_data[0][1]}月]: ").strip()
                 
-                if choice.lower() in ['q', 'quit', '退出']:
-                    print("\n感谢使用党费收取系统，再见！")
-                    sys.exit(0)
-                elif choice == "" or choice == "1":
+                if choice == "" or choice == "1":
                     # 默认加载最新的
                     selected = available_data[0]
                     break
@@ -113,9 +104,9 @@ class PartyFeeSystem:
                         selected = available_data[choice_num - 1]
                         break
                     else:
-                        print(f"请输入 0 到 {len(available_data)} 之间的数字，或输入 'q' 退出！")
+                        print(f"请输入 0 到 {len(available_data)} 之间的数字！")
             except ValueError:
-                print("请输入有效的数字，或输入 'q' 退出！")
+                print("请输入有效的数字！")
         
         # 加载选中的数据
         year, month, filepath = selected
@@ -185,28 +176,24 @@ class PartyFeeSystem:
         print("0. 返回主菜单")
         print("-" * 60)
     
-    def input_float(self, prompt: str, default: float = 0.0, allow_cancel: bool = False) -> float:
+    def input_float(self, prompt: str, default: float = 0.0) -> float:
         """输入浮点数"""
         while True:
             try:
                 value = input(f"{prompt} (默认: {default}): ")
                 if value.strip() == "":
                     return default
-                if allow_cancel and value.strip().lower() in ['q', 'quit', '取消']:
-                    raise UserCancelException("用户取消操作")
                 return float(value)
             except ValueError:
                 print("请输入有效的数字！")
     
-    def input_int(self, prompt: str, default: int = 0, allow_cancel: bool = False) -> int:
+    def input_int(self, prompt: str, default: int = 0) -> int:
         """输入整数"""
         while True:
             try:
                 value = input(f"{prompt} (默认: {default}): ")
                 if value.strip() == "":
                     return default
-                if allow_cancel and value.strip().lower() in ['q', 'quit', '取消']:
-                    raise UserCancelException("用户取消操作")
                 return int(value)
             except ValueError:
                 print("请输入有效的整数！")
@@ -1015,27 +1002,22 @@ class PartyFeeSystem:
         """加载数据"""
         print("\n加载数据")
         print("-" * 40)
-        print("提示：输入 'q' 或 'quit' 可取消操作")
-        print()
+        
+        # 询问年份和月份
+        year = self.input_int("请输入年份", self.current_year)
+        month = self.input_int("请输入月份", self.current_month)
+        
+        # 更新当前年月
+        self.current_year = year
+        self.current_month = month
         
         try:
-            # 询问年份和月份
-            year = self.input_int("请输入年份", self.current_year, allow_cancel=True)
-            month = self.input_int("请输入月份", self.current_month, allow_cancel=True)
-            
-            # 更新当前年月
-            self.current_year = year
-            self.current_month = month
-            
-            try:
-                if self.member_manager.load_from_file(year, month):
-                    print(f"成功加载 {year}年{month}月 的数据！")
-                else:
-                    print(f"未找到 {year}年{month}月 的数据文件，已创建空数据。")
-            except Exception as e:
-                print(f"加载失败：{e}")
-        except UserCancelException:
-            print("\n已取消加载数据操作。")
+            if self.member_manager.load_from_file(year, month):
+                print(f"成功加载 {year}年{month}月 的数据！")
+            else:
+                print(f"未找到 {year}年{month}月 的数据文件，已创建空数据。")
+        except Exception as e:
+            print(f"加载失败：{e}")
     
     def set_year_month(self):
         """设置年月"""
