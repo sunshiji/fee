@@ -151,7 +151,7 @@ class PartyFeeGUI:
         
         # 业务功能按钮
         ttk.Button(toolbar, text="计算党费", command=self._calculate_fees).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="生成报表", command=self._generate_all_reports).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="生成报表", command=self._show_generate_report_dialog).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="导入数据", command=self._import_excel_data).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
@@ -346,8 +346,20 @@ class PartyFeeGUI:
             # 忽略日志记录时的错误
             pass
     
-    def _refresh_display(self):
-        """刷新显示"""
+    def _refresh_display(self, preserve_selection: bool = True):
+        """
+        刷新显示
+        
+        Args:
+            preserve_selection: 是否保持当前选中的支部和党员
+        """
+        # 保存当前选中的支部
+        selected_branch = None
+        if preserve_selection:
+            selection = self.branch_tree.selection()
+            if selection:
+                selected_branch = selection[0]
+        
         # 更新年月显示
         self.year_month_var.set(f"{self.current_year}年{self.current_month}月")
         
@@ -367,6 +379,14 @@ class PartyFeeGUI:
         for branch in branches:
             branch_total = sum(m.monthly_fee for m in branch.members)
             self.branch_tree.insert("", tk.END, iid=branch.name, values=(branch.name, len(branch.members), f"{branch_total:.2f}"))
+        
+        # 恢复选中的支部并填充党员列表
+        if preserve_selection and selected_branch:
+            # 检查该支部是否还存在
+            if selected_branch in self.branch_tree.get_children():
+                self.branch_tree.selection_set(selected_branch)
+                # 手动触发支部选择事件，填充党员列表
+                self._on_branch_select(None)
         
         # 更新统计状态栏
         total_branches = len(branches)
@@ -900,8 +920,195 @@ class PartyFeeGUI:
         except Exception as e:
             messagebox.showerror("错误", f"生成失败: {e}")
     
+    def _show_generate_report_dialog(self):
+        """显示报表生成选择对话框"""
+        branches = self.member_manager.get_all_branches()
+        if not branches:
+            messagebox.showwarning("警告", "暂无党支部数据！")
+            return
+        
+        # 创建对话框
+        dialog = tk.Toplevel(self.root)
+        dialog.title("生成报表")
+        dialog.geometry("500x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # 报表类型选择
+        type_frame = ttk.LabelFrame(dialog, text="选择要生成的报表类型", padding=10)
+        type_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # 选项变量
+        self._var_detail = tk.BooleanVar(value=True)
+        self._var_branch = tk.BooleanVar(value=True)
+        self._var_summary = tk.BooleanVar(value=True)
+        
+        ttk.Checkbutton(type_frame, text="党费明细表", variable=self._var_detail).pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(type_frame, text="各支部党费收缴子表", variable=self._var_branch).pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(type_frame, text="党费汇总表", variable=self._var_summary).pack(anchor=tk.W, pady=2)
+        
+        # 输出路径选择
+        path_frame = ttk.LabelFrame(dialog, text="输出路径（留空使用默认路径）", padding=10)
+        path_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        default_path = os.path.join(OUTPUT_DIR, f"{self.current_year}年{self.current_month}月")
+        self._output_path_var = tk.StringVar(value="")  # 空表示使用默认路径
+        
+        path_entry_frame = ttk.Frame(path_frame)
+        path_entry_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(path_entry_frame, text="自定义路径:").pack(side=tk.LEFT, padx=5)
+        path_entry = ttk.Entry(path_entry_frame, textvariable=self._output_path_var, width=40)
+        path_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        def browse_path():
+            selected_path = filedialog.askdirectory(
+                title="选择输出目录",
+                initialdir=OUTPUT_DIR
+            )
+            if selected_path:
+                self._output_path_var.set(selected_path)
+        
+        ttk.Button(path_entry_frame, text="浏览...", command=browse_path).pack(side=tk.LEFT, padx=5)
+        
+        # 默认路径提示
+        ttk.Label(path_frame, text=f"默认路径: {default_path}", foreground="gray").pack(anchor=tk.W)
+        
+        # 说明
+        info_frame = ttk.LabelFrame(dialog, text="说明", padding=10)
+        info_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        info_text = (
+            "• 勾选需要生成的报表类型\n"
+            "• 如需自定义输出路径，请点击\"浏览...\"选择目录\n"
+            "• 不选择路径将使用默认路径"
+        )
+        ttk.Label(info_frame, text=info_text, justify=tk.LEFT).pack(anchor=tk.W)
+        
+        # 按钮
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(pady=15)
+        
+        def do_generate():
+            # 检查是否至少选择了一个报表类型
+            if not any([self._var_detail.get(), self._var_branch.get(), self._var_summary.get()]):
+                messagebox.showwarning("警告", "请至少选择一种报表类型！")
+                return
+            
+            # 关闭对话框
+            dialog.destroy()
+            
+            # 执行生成
+            self._generate_selected_reports(
+                generate_detail=self._var_detail.get(),
+                generate_branch=self._var_branch.get(),
+                generate_summary=self._var_summary.get(),
+                output_path=self._output_path_var.get().strip()
+            )
+        
+        ttk.Button(btn_frame, text="确定生成", command=do_generate).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.LEFT, padx=10)
+    
+    def _generate_selected_reports(self, generate_detail: bool, generate_branch: bool, 
+                                    generate_summary: bool, output_path: str = ""):
+        """
+        生成选中的报表
+        
+        Args:
+            generate_detail: 是否生成明细表
+            generate_branch: 是否生成子表
+            generate_summary: 是否生成汇总表
+            output_path: 输出路径，空字符串表示使用默认路径
+        """
+        import shutil
+        
+        branches = self.member_manager.get_all_branches()
+        
+        self.status_var.set("正在生成报表...")
+        self.root.update()
+        
+        try:
+            # 先计算党费
+            FeeCalculator.calculate_all_fees(branches)
+            
+            # 确定输出路径
+            use_default_path = (output_path == "")
+            default_month_dir = os.path.join(OUTPUT_DIR, f"{self.current_year}年{self.current_month}月")
+            
+            generated_files = []
+            
+            # 生成选中的报表到默认路径
+            if generate_detail:
+                filepath = self.excel_generator.generate_fee_detail_sheet(branches, self.current_year, self.current_month)
+                generated_files.append(filepath)
+                self._log(f"生成党费明细表: {filepath}")
+            
+            if generate_branch:
+                filepaths = self.excel_generator.generate_all_branch_sheets(branches, self.current_year, self.current_month)
+                generated_files.extend(filepaths)
+                self._log(f"生成各支部党费收缴子表: {len(filepaths)} 个文件")
+            
+            if generate_summary:
+                filepath = self.excel_generator.generate_summary_sheet(branches, self.current_year, self.current_month)
+                generated_files.append(filepath)
+                self._log(f"生成党费汇总表: {filepath}")
+            
+            # 如果用户选择了自定义路径，复制文件到目标路径
+            final_output_dir = default_month_dir
+            if not use_default_path and os.path.exists(output_path):
+                # 创建目标目录
+                target_month_dir = os.path.join(output_path, f"{self.current_year}年{self.current_month}月")
+                if not os.path.exists(target_month_dir):
+                    os.makedirs(target_month_dir)
+                
+                # 复制文件
+                copied_count = 0
+                for src_file in generated_files:
+                    if os.path.exists(src_file):
+                        # 保持相对目录结构
+                        rel_path = os.path.relpath(src_file, default_month_dir)
+                        dest_file = os.path.join(target_month_dir, rel_path)
+                        
+                        # 确保目标目录存在
+                        dest_dir = os.path.dirname(dest_file)
+                        if not os.path.exists(dest_dir):
+                            os.makedirs(dest_dir)
+                        
+                        # 复制文件
+                        shutil.copy2(src_file, dest_file)
+                        copied_count += 1
+                
+                final_output_dir = target_month_dir
+                self._log(f"已复制 {copied_count} 个文件到: {target_month_dir}")
+            
+            self.status_var.set("就绪")
+            
+            # 显示结果
+            report_types = []
+            if generate_detail:
+                report_types.append("党费明细表")
+            if generate_branch:
+                report_types.append("各支部党费收缴子表")
+            if generate_summary:
+                report_types.append("党费汇总表")
+            
+            report_str = "、".join(report_types)
+            path_type = "默认路径" if use_default_path else "自定义路径"
+            
+            messagebox.showinfo(
+                "生成成功",
+                f"已成功生成以下报表：\n\n{report_str}\n\n输出位置: {path_type}\n文件目录: {final_output_dir}"
+            )
+            
+        except Exception as e:
+            self.status_var.set("就绪")
+            self._log(f"生成报表失败: {e}")
+            import traceback
+            self._log(traceback.format_exc())
+            messagebox.showerror("错误", f"生成失败: {e}")
+    
     def _generate_all_reports(self):
-        """生成所有报表"""
+        """生成所有报表（保留原方法用于菜单调用）"""
         branches = self.member_manager.get_all_branches()
         if not branches:
             messagebox.showwarning("警告", "暂无党支部数据！")
