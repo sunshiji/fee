@@ -132,7 +132,7 @@ class ExcelImporter:
             row_score = 0
             
             for col in range(1, sheet.max_column + 1):
-                cell_value = sheet.cell(row=row, column=col).value
+                cell_value = self._get_merged_cell_value(sheet, row, col)
                 if cell_value is None:
                     continue
                 
@@ -159,7 +159,7 @@ class ExcelImporter:
                 row_score = 0
                 
                 for col in range(1, sheet.max_column + 1):
-                    cell_value = sheet.cell(row=row, column=col).value
+                    cell_value = self._get_merged_cell_value(sheet, row, col)
                     if cell_value is None:
                         continue
                     
