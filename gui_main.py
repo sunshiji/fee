@@ -213,6 +213,11 @@ class PartyFeeGUI:
         self.notebook.add(member_detail_frame, text="党员详情")
         self._create_member_detail_panel(member_detail_frame)
         
+        # 操作日志标签页（先创建，因为其他面板可能需要调用_log()
+        log_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(log_frame, text="操作日志")
+        self._create_log_panel(log_frame)
+        
         # 统计信息标签页
         stats_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(stats_frame, text="统计信息")
@@ -222,11 +227,6 @@ class PartyFeeGUI:
         comparison_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(comparison_frame, text="数据对比")
         self._create_comparison_panel(comparison_frame)
-        
-        # 操作日志标签页
-        log_frame = ttk.Frame(self.notebook, padding=10)
-        self.notebook.add(log_frame, text="操作日志")
-        self._create_log_panel(log_frame)
     
     def _create_member_detail_panel(self, parent):
         """创建党员详情面板"""
@@ -333,10 +333,18 @@ class PartyFeeGUI:
     
     def _log(self, message: str):
         """记录日志"""
+        # 安全检查：确保log_text存在
+        if not hasattr(self, 'log_text') or self.log_text is None:
+            return
+        
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-        self.log_text.see(tk.END)
+        try:
+            self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+            self.log_text.see(tk.END)
+        except Exception:
+            # 忽略日志记录时的错误
+            pass
     
     def _refresh_display(self):
         """刷新显示"""
@@ -925,7 +933,7 @@ class PartyFeeGUI:
     
     def _show_statistics(self):
         """显示统计信息"""
-        self.notebook.select(1)
+        self.notebook.select(2)  # 统计信息标签页现在在索引2
         self._log("查看统计信息")
     
     def _save_data(self):
@@ -1463,7 +1471,7 @@ class PartyFeeGUI:
     
     def _show_data_comparison(self):
         """显示数据对比"""
-        self.notebook.select(2)  # 切换到数据对比标签页
+        self.notebook.select(3)  # 数据对比标签页现在在索引3
         self._log("切换到数据对比")
     
     def _on_close(self):
