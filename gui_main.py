@@ -111,7 +111,8 @@ class PartyFeeGUI:
         report_menu.add_command(label="生成各支部党费收缴子表", command=self._generate_branch_sheets)
         report_menu.add_command(label="生成党费汇总表", command=self._generate_summary_sheet)
         report_menu.add_separator()
-        report_menu.add_command(label="生成所有报表", command=self._generate_all_reports)
+        report_menu.add_command(label="生成所有报表（带设置）", command=self._show_generate_report_dialog)
+        report_menu.add_command(label="快速生成所有报表", command=self._generate_all_reports)
         
         # 统计菜单
         stats_menu = tk.Menu(menubar, tearoff=0)
@@ -879,30 +880,42 @@ class PartyFeeGUI:
         messagebox.showinfo("计算完成", f"党费计算完成！\n\n党员人数: {total_members}\n总党费金额: {total_fee:.2f} 元")
     
     def _generate_detail_sheet(self):
-        """生成党费明细表"""
+        """生成党费明细表（使用默认简化设置）"""
         branches = self.member_manager.get_all_branches()
         if not branches:
             messagebox.showwarning("警告", "暂无党支部数据！")
             return
         
         try:
-            filepath = self.excel_generator.generate_fee_detail_sheet(branches, self.current_year, self.current_month)
+            # 使用默认简化设置：简化学院名称（去掉"新疆大学"前缀）、中文月份
+            simplified_college_name = COLLEGE_NAME.replace("新疆大学", "")
+            filepath = self.excel_generator.generate_fee_detail_sheet(
+                branches, self.current_year, self.current_month,
+                custom_college_name=simplified_college_name,
+                use_chinese_month=True
+            )
             self._log(f"生成党费明细表: {filepath}")
-            messagebox.showinfo("成功", f"党费明细表已成功生成！\n\n文件路径: {filepath}")
+            messagebox.showinfo("成功", f"党费明细表已成功生成！\n\n文件路径: {filepath}\n\n表头格式: {simplified_college_name}{self.current_year}年X月党费收缴明细表")
         except Exception as e:
             messagebox.showerror("错误", f"生成失败: {e}")
     
     def _generate_branch_sheets(self):
-        """生成各支部党费收缴子表"""
+        """生成各支部党费收缴子表（使用默认简化设置）"""
         branches = self.member_manager.get_all_branches()
         if not branches:
             messagebox.showwarning("警告", "暂无党支部数据！")
             return
         
         try:
-            filepaths = self.excel_generator.generate_all_branch_sheets(branches, self.current_year, self.current_month)
+            # 使用默认简化设置：简化学院名称（去掉"新疆大学"前缀）、中文月份
+            simplified_college_name = COLLEGE_NAME.replace("新疆大学", "")
+            filepaths = self.excel_generator.generate_all_branch_sheets(
+                branches, self.current_year, self.current_month,
+                custom_college_name=simplified_college_name,
+                use_chinese_month=True
+            )
             self._log(f"生成各支部党费收缴子表: {len(filepaths)} 个文件")
-            messagebox.showinfo("成功", f"成功生成 {len(filepaths)} 个支部党费收缴子表！")
+            messagebox.showinfo("成功", f"成功生成 {len(filepaths)} 个支部党费收缴子表！\n\n表头格式: {self.current_year}年{simplified_college_name}XX党支部X月党费收缴明细\n文件名格式: {self.current_year}年{self.current_month}月-XX党支部-党费收缴子表.xlsx")
         except Exception as e:
             messagebox.showerror("错误", f"生成失败: {e}")
     
@@ -1211,7 +1224,7 @@ class PartyFeeGUI:
             messagebox.showerror("错误", f"生成失败: {e}")
     
     def _generate_all_reports(self):
-        """生成所有报表（保留原方法用于菜单调用）"""
+        """快速生成所有报表（使用默认简化设置）"""
         branches = self.member_manager.get_all_branches()
         if not branches:
             messagebox.showwarning("警告", "暂无党支部数据！")
@@ -1221,21 +1234,40 @@ class PartyFeeGUI:
         self.root.update()
         
         try:
+            # 使用默认简化设置：简化学院名称（去掉"新疆大学"前缀）、中文月份
+            simplified_college_name = COLLEGE_NAME.replace("新疆大学", "")
+            
             # 先计算党费
             FeeCalculator.calculate_all_fees(branches)
             
             # 生成党费明细表
-            self.excel_generator.generate_fee_detail_sheet(branches, self.current_year, self.current_month)
+            self.excel_generator.generate_fee_detail_sheet(
+                branches, self.current_year, self.current_month,
+                custom_college_name=simplified_college_name,
+                use_chinese_month=True
+            )
             
             # 生成各支部党费收缴子表
-            self.excel_generator.generate_all_branch_sheets(branches, self.current_year, self.current_month)
+            self.excel_generator.generate_all_branch_sheets(
+                branches, self.current_year, self.current_month,
+                custom_college_name=simplified_college_name,
+                use_chinese_month=True
+            )
             
             # 生成党费汇总表
             self.excel_generator.generate_summary_sheet(branches, self.current_year, self.current_month)
             
-            self._log(f"生成所有报表完成")
+            self._log(f"生成所有报表完成（快速模式）")
             self.status_var.set("就绪")
-            messagebox.showinfo("成功", f"所有报表已生成完成！\n\n文件保存在: {os.path.join(OUTPUT_DIR, f'{self.current_year}年{self.current_month}月')}")
+            messagebox.showinfo(
+                "成功", 
+                f"所有报表已生成完成！\n\n"
+                f"文件保存在: {os.path.join(OUTPUT_DIR, f'{self.current_year}年{self.current_month}月')}\n\n"
+                f"设置说明:\n"
+                f"• 学院名称: {simplified_college_name}\n"
+                f"• 月份格式: 中文月份（如\"二月\"）\n"
+                f"• 支部名称: 已简化（去掉\"中共\"、\"委员会\"等）"
+            )
             
         except Exception as e:
             self.status_var.set("就绪")

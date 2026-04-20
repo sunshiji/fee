@@ -18,6 +18,10 @@ CHINESE_MONTHS = {
     7: "七", 8: "八", 9: "九", 10: "十", 11: "十一", 12: "十二"
 }
 
+# 需要移除的支部名称前缀和后缀
+BRANCH_NAME_PREFIXES = ["中共", "中国共产党", "中共和"]
+BRANCH_NAME_SUFFIXES = ["委员会", "党委会", "党总支", "分党委", "党委"]
+
 
 def get_chinese_month(month: int) -> str:
     """
@@ -30,6 +34,58 @@ def get_chinese_month(month: int) -> str:
         中文月份字符串，如"一"、"十二"
     """
     return CHINESE_MONTHS.get(month, str(month))
+
+
+def simplify_branch_name(name: str) -> str:
+    """
+    简化支部名称，去掉前缀和后缀
+    
+    Args:
+        name: 原始支部名称，如"中共xxxx计算机科学与技术学院研究生第九支部委员会"
+        
+    Returns:
+        简化后的名称，如"计算机科学与技术学院研究生第九支部"
+    """
+    simplified = name
+    
+    # 移除前缀
+    for prefix in BRANCH_NAME_PREFIXES:
+        if simplified.startswith(prefix):
+            simplified = simplified[len(prefix):]
+            break
+    
+    # 移除后缀（从后往前找最长的匹配）
+    for suffix in sorted(BRANCH_NAME_SUFFIXES, key=len, reverse=True):
+        if simplified.endswith(suffix):
+            simplified = simplified[:-len(suffix)]
+            break
+    
+    # 确保结果不是空字符串
+    if not simplified.strip():
+        simplified = name
+    
+    return simplified.strip()
+
+
+def get_display_branch_name(name: str, custom_college_name: Optional[str] = None) -> str:
+    """
+    获取用于表头显示的支部名称
+    
+    Args:
+        name: 原始支部名称
+        custom_college_name: 自定义学院名称
+        
+    Returns:
+        用于表头显示的支部名称
+    """
+    simplified = simplify_branch_name(name)
+    
+    # 如果有自定义学院名称，检查是否需要替换
+    if custom_college_name and custom_college_name in simplified:
+        # 已经包含学院名称，直接返回简化后的名称
+        return simplified
+    
+    return simplified
 
 
 class ExcelGenerator:
@@ -296,8 +352,12 @@ class ExcelGenerator:
             use_chinese_month: 是否使用中文月份（默认True，如"二月"而不是"2月"）
         """
         wb = Workbook()
+        
+        # 简化支部名称（去掉"中共"、"委员会"等前缀后缀）
+        simplified_branch_name = simplify_branch_name(branch.name)
+        
         ws = wb.active
-        ws.title = f"{branch.name}党费收缴明细"
+        ws.title = f"{simplified_branch_name}党费收缴明细"
         
         # 确定学院显示名称
         college_name = custom_college_name if custom_college_name else self.college_display_name
@@ -310,10 +370,11 @@ class ExcelGenerator:
         
         # 生成表格标题
         # 子表格式："2026年计算机科学与技术学院本科生第一党支部二月党费收缴明细"
+        # 使用简化的支部名称
         if custom_title:
             title = custom_title
         else:
-            title = f"{year}年{college_name}{branch.name}{month_str}党费收缴明细"
+            title = f"{year}年{college_name}{simplified_branch_name}{month_str}党费收缴明细"
         
         # 定义列宽
         column_widths = [8, 15, 12, 12, 12, 14, 12, 12, 12, 12, 12, 12, 12, 15, 12]
@@ -414,8 +475,9 @@ class ExcelGenerator:
         sub_sheet_dir = self._get_sub_sheet_dir(year, month)
         # 改进命名规则，与总表有明显区别
         # 总表命名：2026年2月党费收缴明细表.xlsx
-        # 子表命名：2026年2月-教工第一支部-党费收缴子表.xlsx
-        filename = f"{year}年{month}月-{branch.name}-党费收缴子表.xlsx"
+        # 子表命名：2026年2月-计算机科学与技术学院研究生第八党支部-党费收缴子表.xlsx
+        # 使用简化的支部名称，去掉"中共"、"委员会"等前缀后缀
+        filename = f"{year}年{month}月-{simplified_branch_name}-党费收缴子表.xlsx"
         filepath = os.path.join(sub_sheet_dir, filename)
         wb.save(filepath)
         
