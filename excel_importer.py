@@ -536,11 +536,15 @@ class ExcelImporter:
             member.deduction_info = deduction_info
             
             # 尝试读取已有的缴费基数和党费
+            has_payment_base = False
+            has_monthly_fee = False
+            
             if 'payment_base' in column_mapping:
                 value = self._get_merged_cell_value(sheet, row, column_mapping['payment_base'])
                 if value is not None:
                     try:
                         member.payment_base = float(value)
+                        has_payment_base = True
                     except (ValueError, TypeError):
                         pass
             
@@ -549,11 +553,12 @@ class ExcelImporter:
                 if value is not None:
                     try:
                         member.monthly_fee = float(value)
+                        has_monthly_fee = True
                     except (ValueError, TypeError):
                         pass
             
-            # 如果没有读取到缴费基数或党费，自动计算
-            if member.payment_base == 0 or member.monthly_fee == 0:
+            # 只有当两个值都没有从Excel中读取到时，才自动计算
+            if not has_payment_base and not has_monthly_fee:
                 FeeCalculator.calculate_member_fee(member)
             
             # 添加到支部
@@ -693,11 +698,15 @@ class ExcelImporter:
             member.deduction_info = deduction_info
             
             # 尝试读取已有的缴费基数和党费
+            has_payment_base = False
+            has_monthly_fee = False
+            
             if 'payment_base' in column_mapping:
                 value = self._get_merged_cell_value(sheet, row, column_mapping['payment_base'])
                 if value is not None:
                     try:
                         member.payment_base = float(value)
+                        has_payment_base = True
                     except (ValueError, TypeError):
                         pass
             
@@ -706,11 +715,12 @@ class ExcelImporter:
                 if value is not None:
                     try:
                         member.monthly_fee = float(value)
+                        has_monthly_fee = True
                     except (ValueError, TypeError):
                         pass
             
-            # 如果没有读取到缴费基数或党费，自动计算
-            if member.payment_base == 0 or member.monthly_fee == 0:
+            # 只有当两个值都没有从Excel中读取到时，才自动计算
+            if not has_payment_base and not has_monthly_fee:
                 FeeCalculator.calculate_member_fee(member)
             
             # 添加到支部

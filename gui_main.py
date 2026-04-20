@@ -288,17 +288,17 @@ class PartyFeeGUI:
             self.deduction_vars[field] = var
             ttk.Entry(deduction_frame, textvariable=var, width=20).grid(row=row, column=col+1, sticky=tk.W, padx=5, pady=2)
         
-        # 计算结果
-        result_frame = ttk.LabelFrame(parent, text="计算结果", padding=10)
+        # 计算结果（可编辑）
+        result_frame = ttk.LabelFrame(parent, text="计算结果（可手动修改）", padding=10)
         result_frame.pack(fill=tk.X, pady=5)
         
         ttk.Label(result_frame, text="缴费基数:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
         self.detail_base_var = tk.StringVar()
-        ttk.Entry(result_frame, textvariable=self.detail_base_var, state="readonly", width=20, font=("Arial", 10, "bold")).grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
+        ttk.Entry(result_frame, textvariable=self.detail_base_var, width=20, font=("Arial", 10, "bold")).grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
         
         ttk.Label(result_frame, text="月党费:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=2)
         self.detail_fee_var = tk.StringVar()
-        ttk.Entry(result_frame, textvariable=self.detail_fee_var, state="readonly", width=20, font=("Arial", 10, "bold"), foreground="red").grid(row=0, column=3, sticky=tk.W, padx=5, pady=2)
+        ttk.Entry(result_frame, textvariable=self.detail_fee_var, width=20, font=("Arial", 10, "bold"), foreground="red").grid(row=0, column=3, sticky=tk.W, padx=5, pady=2)
         
         # 操作按钮
         btn_frame = ttk.Frame(parent)
@@ -780,9 +780,36 @@ class PartyFeeGUI:
                 personal_income_tax=float(self.deduction_vars["personal_income_tax"].get() or 0)
             )
             
+            # 解析用户可能修改的缴费基数和月党费
+            new_payment_base = None
+            new_monthly_fee = None
+            
+            # 检查缴费基数是否被修改
+            base_str = self.detail_base_var.get().strip()
+            if base_str:
+                try:
+                    new_payment_base = float(base_str)
+                except ValueError:
+                    pass
+            
+            # 检查月党费是否被修改
+            fee_str = self.detail_fee_var.get().strip()
+            if fee_str:
+                try:
+                    new_monthly_fee = float(fee_str)
+                except ValueError:
+                    pass
+            
             if self.member_manager.update_member(name, branch_name, salary_info, deduction_info):
-                # 重新计算党费
-                FeeCalculator.calculate_member_fee(member)
+                # 如果用户修改了缴费基数或月党费，使用用户修改的值
+                if new_payment_base is not None:
+                    member.payment_base = new_payment_base
+                if new_monthly_fee is not None:
+                    member.monthly_fee = new_monthly_fee
+                
+                # 只有当两个值都没有被修改时，才重新计算
+                if new_payment_base is None and new_monthly_fee is None:
+                    FeeCalculator.calculate_member_fee(member)
                 
                 # 更新显示
                 self._fill_member_detail(member)
@@ -848,7 +875,8 @@ class PartyFeeGUI:
             if member:
                 member.salary_info = salary_info
                 member.deduction_info = deduction_info
-                FeeCalculator.calculate_member_fee(member)
+                # 强制重新计算，覆盖已有的值
+                FeeCalculator.calculate_member_fee(member, force=True)
                 
                 self._fill_member_detail(member)
                 self._refresh_display()
@@ -870,7 +898,8 @@ class PartyFeeGUI:
             messagebox.showwarning("警告", "暂无党员数据！")
             return
         
-        FeeCalculator.calculate_all_fees(branches)
+        # 强制重新计算所有党费，覆盖已有的值
+        FeeCalculator.calculate_all_fees(branches, force=True)
         self._refresh_display()
         
         total_members = sum(len(b.members) for b in branches)
@@ -943,9 +972,10 @@ class PartyFeeGUI:
         # 创建对话框
         dialog = tk.Toplevel(self.root)
         dialog.title("生成报表")
-        dialog.geometry("580x620")
+        dialog.geometry("580x700")
         dialog.transient(self.root)
         dialog.grab_set()
+        dialog.resizable(True, True)  # 允许调整大小    
         
         # 选项变量
         self._var_detail = tk.BooleanVar(value=True)
@@ -1108,7 +1138,7 @@ class PartyFeeGUI:
             )
         
         ttk.Button(btn_frame, text="确定生成", command=do_generate, 
-                   width=15, style='Accent.TButton').pack(side=tk.LEFT, padx=15)
+                   width=15).pack(side=tk.LEFT, padx=15)
         ttk.Button(btn_frame, text="取消", command=dialog.destroy, width=15).pack(side=tk.LEFT, padx=15)
     
     def _generate_selected_reports(self, generate_detail: bool, generate_branch: bool, 

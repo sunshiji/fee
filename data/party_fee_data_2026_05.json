@@ -1,7 +1,7 @@
 {
   "year": 2026,
   "month": 5,
-  "created_at": "2026-04-20T13:18:04.108032",
+  "created_at": "2026-04-20T17:11:18.329500",
   "branches": [
     {
       "id": "",
@@ -29,8 +29,8 @@
             "unemployment_insurance": 45.0,
             "personal_income_tax": 45.0
           },
-          "payment_base": 997.0,
-          "monthly_fee": 5.0
+          "payment_base": 25.0,
+          "monthly_fee": 0.2
         },
         {
           "id": "",

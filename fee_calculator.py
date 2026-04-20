@@ -73,35 +73,49 @@ class FeeCalculator:
         return round(monthly_fee, 1)
     
     @staticmethod
-    def calculate_member_fee(member: PartyMember) -> PartyMember:
+    def calculate_member_fee(member: PartyMember, force: bool = False) -> PartyMember:
         """
         计算单个党员的党费
-        """
-        # 计算缴费基数
-        member.payment_base = FeeCalculator.calculate_payment_base(member)
         
-        # 计算每月应缴党费
-        member.monthly_fee = FeeCalculator.calculate_monthly_fee(member.payment_base)
+        Args:
+            member: 党员对象
+            force: 是否强制重新计算，即使已有值
+        """
+        # 只有当force为True，或者payment_base和monthly_fee都为0时，才进行计算
+        if force or (member.payment_base == 0 and member.monthly_fee == 0):
+            # 计算缴费基数
+            member.payment_base = FeeCalculator.calculate_payment_base(member)
+            
+            # 计算每月应缴党费
+            member.monthly_fee = FeeCalculator.calculate_monthly_fee(member.payment_base)
         
         return member
     
     @staticmethod
-    def calculate_branch_fees(branch: PartyBranch) -> PartyBranch:
+    def calculate_branch_fees(branch: PartyBranch, force: bool = False) -> PartyBranch:
         """
         计算整个支部所有党员的党费
+        
+        Args:
+            branch: 支部对象
+            force: 是否强制重新计算，即使已有值
         """
         for member in branch.members:
-            FeeCalculator.calculate_member_fee(member)
+            FeeCalculator.calculate_member_fee(member, force)
         
         return branch
     
     @staticmethod
-    def calculate_all_fees(branches: List[PartyBranch]) -> List[PartyBranch]:
+    def calculate_all_fees(branches: List[PartyBranch], force: bool = False) -> List[PartyBranch]:
         """
         计算所有支部所有党员的党费
+        
+        Args:
+            branches: 支部列表
+            force: 是否强制重新计算，即使已有值
         """
         for branch in branches:
-            FeeCalculator.calculate_branch_fees(branch)
+            FeeCalculator.calculate_branch_fees(branch, force)
         
         return branches
     
