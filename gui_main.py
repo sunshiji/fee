@@ -930,35 +930,88 @@ class PartyFeeGUI:
         # 创建对话框
         dialog = tk.Toplevel(self.root)
         dialog.title("生成报表")
-        dialog.geometry("500x400")
+        dialog.geometry("580x620")
         dialog.transient(self.root)
         dialog.grab_set()
-        
-        # 报表类型选择
-        type_frame = ttk.LabelFrame(dialog, text="选择要生成的报表类型", padding=10)
-        type_frame.pack(fill=tk.X, padx=10, pady=10)
         
         # 选项变量
         self._var_detail = tk.BooleanVar(value=True)
         self._var_branch = tk.BooleanVar(value=True)
         self._var_summary = tk.BooleanVar(value=True)
         
-        ttk.Checkbutton(type_frame, text="党费明细表", variable=self._var_detail).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(type_frame, text="各支部党费收缴子表", variable=self._var_branch).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(type_frame, text="党费汇总表", variable=self._var_summary).pack(anchor=tk.W, pady=2)
+        # 学院名称选项
+        self._var_college_name_option = tk.StringVar(value="short")  # short / full / custom
+        self._var_custom_college_name = tk.StringVar(value="计算机科学与技术学院")
         
-        # 输出路径选择
-        path_frame = ttk.LabelFrame(dialog, text="输出路径（留空使用默认路径）", padding=10)
+        # 月份格式选项
+        self._var_month_format = tk.StringVar(value="chinese")  # chinese / number
+        
+        # 输出路径
+        self._output_path_var = tk.StringVar(value="")  # 空表示使用默认路径
+        
+        # ============== 第一部分：报表类型选择 ==============
+        type_frame = ttk.LabelFrame(dialog, text="第一步：选择要生成的报表类型", padding=10)
+        type_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Checkbutton(type_frame, text="党费明细表（所有党员汇总）", variable=self._var_detail).pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(type_frame, text="各支部党费收缴子表（每个支部单独文件）", variable=self._var_branch).pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(type_frame, text="党费汇总表（统计汇总）", variable=self._var_summary).pack(anchor=tk.W, pady=2)
+        
+        # ============== 第二部分：表头样式设置 ==============
+        header_frame = ttk.LabelFrame(dialog, text="第二步：表头样式设置", padding=10)
+        header_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # 学院名称选项
+        college_frame = ttk.LabelFrame(header_frame, text="学院名称显示", padding=5)
+        college_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Radiobutton(college_frame, text="简化名称（如：计算机科学与技术学院）", 
+                        variable=self._var_college_name_option, value="short").pack(anchor=tk.W, pady=2)
+        ttk.Radiobutton(college_frame, text="完整名称（如：新疆大学计算机科学与技术学院）", 
+                        variable=self._var_college_name_option, value="full").pack(anchor=tk.W, pady=2)
+        
+        custom_frame = ttk.Frame(college_frame)
+        custom_frame.pack(fill=tk.X, pady=2)
+        ttk.Radiobutton(custom_frame, text="自定义:", 
+                        variable=self._var_college_name_option, value="custom").pack(side=tk.LEFT)
+        ttk.Entry(custom_frame, textvariable=self._var_custom_college_name, width=30).pack(side=tk.LEFT, padx=5)
+        
+        # 月份格式选项
+        month_frame = ttk.LabelFrame(header_frame, text="月份显示格式", padding=5)
+        month_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Radiobutton(month_frame, text="中文月份（如：二月、十二月）", 
+                        variable=self._var_month_format, value="chinese").pack(side=tk.LEFT, padx=20, pady=2)
+        ttk.Radiobutton(month_frame, text="数字月份（如：2月、12月）", 
+                        variable=self._var_month_format, value="number").pack(side=tk.LEFT, padx=20, pady=2)
+        
+        # 表头预览
+        preview_frame = ttk.LabelFrame(header_frame, text="表头预览（基于当前设置）", padding=5)
+        preview_frame.pack(fill=tk.X, pady=5)
+        
+        # 预览标签
+        self._preview_detail_var = tk.StringVar(value="")
+        self._preview_branch_var = tk.StringVar(value="")
+        
+        ttk.Label(preview_frame, text="明细表表头:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(preview_frame, textvariable=self._preview_detail_var, 
+                  foreground="blue", font=("Arial", 9, "bold")).grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
+        
+        ttk.Label(preview_frame, text="子表表头示例:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(preview_frame, textvariable=self._preview_branch_var, 
+                  foreground="blue", font=("Arial", 9, "bold")).grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
+        
+        # ============== 第三部分：输出路径选择 ==============
+        path_frame = ttk.LabelFrame(dialog, text="第三步：输出路径（留空使用默认路径）", padding=10)
         path_frame.pack(fill=tk.X, padx=10, pady=5)
         
         default_path = os.path.join(OUTPUT_DIR, f"{self.current_year}年{self.current_month}月")
-        self._output_path_var = tk.StringVar(value="")  # 空表示使用默认路径
         
         path_entry_frame = ttk.Frame(path_frame)
         path_entry_frame.pack(fill=tk.X, pady=5)
         
         ttk.Label(path_entry_frame, text="自定义路径:").pack(side=tk.LEFT, padx=5)
-        path_entry = ttk.Entry(path_entry_frame, textvariable=self._output_path_var, width=40)
+        path_entry = ttk.Entry(path_entry_frame, textvariable=self._output_path_var, width=45)
         path_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         
         def browse_path():
@@ -974,18 +1027,40 @@ class PartyFeeGUI:
         # 默认路径提示
         ttk.Label(path_frame, text=f"默认路径: {default_path}", foreground="gray").pack(anchor=tk.W)
         
-        # 说明
-        info_frame = ttk.LabelFrame(dialog, text="说明", padding=10)
-        info_frame.pack(fill=tk.X, padx=10, pady=5)
+        # ============== 更新预览 ==============
+        def update_preview(*args):
+            # 获取学院名称
+            if self._var_college_name_option.get() == "short":
+                # 简化名称：去掉"新疆大学"前缀
+                college_name = COLLEGE_NAME.replace("新疆大学", "")
+            elif self._var_college_name_option.get() == "full":
+                college_name = COLLEGE_NAME
+            else:
+                college_name = self._var_custom_college_name.get().strip() or "学院"
+            
+            # 获取月份格式
+            if self._var_month_format.get() == "chinese":
+                from excel_generator import get_chinese_month
+                month_str = f"{get_chinese_month(self.current_month)}月"
+            else:
+                month_str = f"{self.current_month}月"
+            
+            # 生成预览
+            detail_preview = f"{college_name}{self.current_year}年{month_str}党费收缴明细表"
+            branch_preview = f"{self.current_year}年{college_name}本科生第一党支部{month_str}党费收缴明细"
+            
+            self._preview_detail_var.set(detail_preview)
+            self._preview_branch_var.set(branch_preview)
         
-        info_text = (
-            "• 勾选需要生成的报表类型\n"
-            "• 如需自定义输出路径，请点击\"浏览...\"选择目录\n"
-            "• 不选择路径将使用默认路径"
-        )
-        ttk.Label(info_frame, text=info_text, justify=tk.LEFT).pack(anchor=tk.W)
+        # 绑定变量变化事件
+        self._var_college_name_option.trace_add("write", update_preview)
+        self._var_custom_college_name.trace_add("write", update_preview)
+        self._var_month_format.trace_add("write", update_preview)
         
-        # 按钮
+        # 初始更新预览
+        update_preview()
+        
+        # ============== 按钮 ==============
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(pady=15)
         
@@ -995,6 +1070,17 @@ class PartyFeeGUI:
                 messagebox.showwarning("警告", "请至少选择一种报表类型！")
                 return
             
+            # 获取学院名称
+            if self._var_college_name_option.get() == "short":
+                college_name = COLLEGE_NAME.replace("新疆大学", "")
+            elif self._var_college_name_option.get() == "full":
+                college_name = COLLEGE_NAME
+            else:
+                college_name = self._var_custom_college_name.get().strip() or COLLEGE_NAME
+            
+            # 是否使用中文月份
+            use_chinese_month = (self._var_month_format.get() == "chinese")
+            
             # 关闭对话框
             dialog.destroy()
             
@@ -1003,14 +1089,19 @@ class PartyFeeGUI:
                 generate_detail=self._var_detail.get(),
                 generate_branch=self._var_branch.get(),
                 generate_summary=self._var_summary.get(),
-                output_path=self._output_path_var.get().strip()
+                output_path=self._output_path_var.get().strip(),
+                custom_college_name=college_name,
+                use_chinese_month=use_chinese_month
             )
         
-        ttk.Button(btn_frame, text="确定生成", command=do_generate).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="确定生成", command=do_generate, 
+                   width=15, style='Accent.TButton').pack(side=tk.LEFT, padx=15)
+        ttk.Button(btn_frame, text="取消", command=dialog.destroy, width=15).pack(side=tk.LEFT, padx=15)
     
     def _generate_selected_reports(self, generate_detail: bool, generate_branch: bool, 
-                                    generate_summary: bool, output_path: str = ""):
+                                    generate_summary: bool, output_path: str = "",
+                                    custom_college_name: Optional[str] = None,
+                                    use_chinese_month: bool = False):
         """
         生成选中的报表
         
@@ -1019,6 +1110,8 @@ class PartyFeeGUI:
             generate_branch: 是否生成子表
             generate_summary: 是否生成汇总表
             output_path: 输出路径，空字符串表示使用默认路径
+            custom_college_name: 自定义学院名称
+            use_chinese_month: 是否使用中文月份
         """
         import shutil
         
@@ -1033,18 +1126,25 @@ class PartyFeeGUI:
             
             # 确定输出路径
             use_default_path = (output_path == "")
-            default_month_dir = os.path.join(OUTPUT_DIR, f"{self.current_year}年{self.current_month}月")
-            
-            generated_files = []
             
             # 生成选中的报表到默认路径
+            generated_files = []
+            
             if generate_detail:
-                filepath = self.excel_generator.generate_fee_detail_sheet(branches, self.current_year, self.current_month)
+                filepath = self.excel_generator.generate_fee_detail_sheet(
+                    branches, self.current_year, self.current_month,
+                    custom_college_name=custom_college_name,
+                    use_chinese_month=use_chinese_month
+                )
                 generated_files.append(filepath)
                 self._log(f"生成党费明细表: {filepath}")
             
             if generate_branch:
-                filepaths = self.excel_generator.generate_all_branch_sheets(branches, self.current_year, self.current_month)
+                filepaths = self.excel_generator.generate_all_branch_sheets(
+                    branches, self.current_year, self.current_month,
+                    custom_college_name=custom_college_name,
+                    use_chinese_month=use_chinese_month
+                )
                 generated_files.extend(filepaths)
                 self._log(f"生成各支部党费收缴子表: {len(filepaths)} 个文件")
             
@@ -1052,6 +1152,9 @@ class PartyFeeGUI:
                 filepath = self.excel_generator.generate_summary_sheet(branches, self.current_year, self.current_month)
                 generated_files.append(filepath)
                 self._log(f"生成党费汇总表: {filepath}")
+            
+            # 确定默认月份目录
+            default_month_dir = os.path.join(OUTPUT_DIR, f"{self.current_year}年{self.current_month}月")
             
             # 如果用户选择了自定义路径，复制文件到目标路径
             final_output_dir = default_month_dir

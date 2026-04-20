@@ -12,12 +12,34 @@ from config import OUTPUT_DIR, COLLEGE_NAME
 from data_models import PartyBranch, PartyMember
 
 
+# 中文月份数字映射
+CHINESE_MONTHS = {
+    1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六",
+    7: "七", 8: "八", 9: "九", 10: "十", 11: "十一", 12: "十二"
+}
+
+
+def get_chinese_month(month: int) -> str:
+    """
+    将数字月份转换为中文月份
+    
+    Args:
+        month: 数字月份 (1-12)
+        
+    Returns:
+        中文月份字符串，如"一"、"十二"
+    """
+    return CHINESE_MONTHS.get(month, str(month))
+
+
 class ExcelGenerator:
     """Excel文件生成器"""
     
     def __init__(self):
         """初始化Excel生成器"""
         self._ensure_output_dir()
+        # 默认学院显示名称（可自定义）
+        self.college_display_name = COLLEGE_NAME
         
         # 定义样式
         self.title_font = Font(bold=True, size=16)
@@ -99,18 +121,42 @@ class ExcelGenerator:
             self._get_sub_sheet_dir(year, month, create=True)
     
     def generate_fee_detail_sheet(self, branches: List[PartyBranch], 
-                                    year: int, month: int) -> str:
+                                    year: int, month: int,
+                                    custom_title: Optional[str] = None,
+                                    custom_college_name: Optional[str] = None,
+                                    use_chinese_month: bool = False) -> str:
         """
         生成党费收缴明细表
         
         包含所有支部的所有党员详细信息
+        
+        Args:
+            branches: 党支部列表
+            year: 年份
+            month: 月份
+            custom_title: 自定义完整标题（如果提供，将覆盖其他设置）
+            custom_college_name: 自定义学院名称（如果不提供，使用默认的college_display_name）
+            use_chinese_month: 是否使用中文月份（如"二月"而不是"2月"）
         """
         wb = Workbook()
         ws = wb.active
-        ws.title = f"{year}年{month}月党费收缴明细表"
+        
+        # 确定学院显示名称
+        college_name = custom_college_name if custom_college_name else self.college_display_name
+        
+        # 确定月份显示格式
+        if use_chinese_month:
+            month_str = f"{get_chinese_month(month)}月"
+        else:
+            month_str = f"{month}月"
+        
+        ws.title = f"{year}年{month_str}党费收缴明细表"
         
         # 生成表格标题
-        title = f"{COLLEGE_NAME}{year}年{month}月党费收缴明细表"
+        if custom_title:
+            title = custom_title
+        else:
+            title = f"{college_name}{year}年{month_str}党费收缴明细表"
         
         # 定义列宽
         column_widths = [8, 25, 8, 15, 12, 12, 12, 14, 12, 12, 12, 12, 12, 12, 12, 12, 15, 12]
@@ -232,18 +278,42 @@ class ExcelGenerator:
         return filepath
     
     def generate_branch_fee_sheet(self, branch: PartyBranch, 
-                                    year: int, month: int) -> str:
+                                    year: int, month: int,
+                                    custom_title: Optional[str] = None,
+                                    custom_college_name: Optional[str] = None,
+                                    use_chinese_month: bool = True) -> str:
         """
         生成单个支部的党费收缴明细
         
         每个支部一个单独的表格
+        
+        Args:
+            branch: 党支部对象
+            year: 年份
+            month: 月份
+            custom_title: 自定义完整标题（如果提供，将覆盖其他设置）
+            custom_college_name: 自定义学院名称（如果不提供，使用默认的college_display_name）
+            use_chinese_month: 是否使用中文月份（默认True，如"二月"而不是"2月"）
         """
         wb = Workbook()
         ws = wb.active
         ws.title = f"{branch.name}党费收缴明细"
         
+        # 确定学院显示名称
+        college_name = custom_college_name if custom_college_name else self.college_display_name
+        
+        # 确定月份显示格式（子表默认使用中文月份）
+        if use_chinese_month:
+            month_str = f"{get_chinese_month(month)}月"
+        else:
+            month_str = f"{month}月"
+        
         # 生成表格标题
-        title = f"{year}年{COLLEGE_NAME}{branch.name}{month}月党费收缴明细"
+        # 子表格式："2026年计算机科学与技术学院本科生第一党支部二月党费收缴明细"
+        if custom_title:
+            title = custom_title
+        else:
+            title = f"{year}年{college_name}{branch.name}{month_str}党费收缴明细"
         
         # 定义列宽
         column_widths = [8, 15, 12, 12, 12, 14, 12, 12, 12, 12, 12, 12, 12, 15, 12]
@@ -352,16 +422,29 @@ class ExcelGenerator:
         return filepath
     
     def generate_all_branch_sheets(self, branches: List[PartyBranch], 
-                                     year: int, month: int) -> List[str]:
+                                     year: int, month: int,
+                                     custom_college_name: Optional[str] = None,
+                                     use_chinese_month: bool = True) -> List[str]:
         """
         生成所有支部的党费收缴明细
         
         每个支部一个单独的Excel文件
+        
+        Args:
+            branches: 党支部列表
+            year: 年份
+            month: 月份
+            custom_college_name: 自定义学院名称
+            use_chinese_month: 是否使用中文月份
         """
         generated_files = []
         
         for branch in branches:
-            filepath = self.generate_branch_fee_sheet(branch, year, month)
+            filepath = self.generate_branch_fee_sheet(
+                branch, year, month,
+                custom_college_name=custom_college_name,
+                use_chinese_month=use_chinese_month
+            )
             generated_files.append(filepath)
         
         return generated_files
