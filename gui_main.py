@@ -5,7 +5,7 @@ from typing import List, Optional
 import os
 import glob
 
-from config import DEFAULT_YEAR, DEFAULT_MONTH, OUTPUT_DIR, DATA_DIR
+from config import DEFAULT_YEAR, DEFAULT_MONTH, OUTPUT_DIR, DATA_DIR, COLLEGE_NAME
 from data_models import PartyMember, PartyBranch, SalaryInfo, DeductionInfo
 from member_manager import MemberManager
 from fee_calculator import FeeCalculator
