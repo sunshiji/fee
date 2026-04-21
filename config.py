@@ -1,8 +1,16 @@
 # 系统配置文件
 import os
+import sys
+
+def get_base_dir():
+    """获取项目根目录，支持开发模式和打包模式"""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
 
 # 项目根目录
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = get_base_dir()
 
 # 数据目录
 DATA_DIR = os.path.join(BASE_DIR, "data")
